@@ -5,7 +5,6 @@
 ![python](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)
 ![dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
 ![tests](https://img.shields.io/badge/tests-26%20passing-brightgreen)
-[![ci](https://github.com/nickharris808/lcert-verify/actions/workflows/ci.yml/badge.svg)](https://github.com/nickharris808/lcert-verify/actions/workflows/ci.yml)
 
 **Check a manufacturing certificate without trusting whoever produced it — or installing anything.**
 
