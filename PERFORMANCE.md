@@ -107,9 +107,28 @@ tests check the fast path against it on every run.
 
 Acceptance specifications are tens of keys. This is irrelevant at real sizes.
 
-## cert-atlas
+## cert-atlas — scoring is process spawn, so make them overlap
 
-Build 27 cases: **0.01 s**. Score 27 cases: **<0.01 s**. Nothing to optimise.
+Building the 36-case corpus: **0.05 s**. Scoring it in-process: **6.6 ms**.
+
+Scoring an *external* verifier is a different shape entirely, because every case is a subprocess
+and the cost is interpreter startup — **92 ms per case**, 3.3 s for the corpus, and roughly 90 s
+for a thousand-case atlas. That is exactly the workload `cert-atlas score` and the submission path
+run, so it is the number that matters.
+
+Subprocesses release the GIL while they wait, so a thread pool helps. Measured on 14 cores:
+
+| `--jobs` | Time | Speedup |
+|---|---|---|
+| 1 | 3260 ms | 1.00× |
+| 4 | 805 ms | 4.05× |
+| 8 | 519 ms | 6.29× |
+| 16 | 484 ms | **6.73×** |
+
+Results are assembled in index order regardless of scheduling, so the score, the row order and the
+missed list are identical at any `--jobs`. A test asserts that, and another asserts that a hostile
+verifier — one that calls `sys.exit`, raises, or dies — is still contained per-case rather than
+taking down the run.
 
 ## What is *not* measured here
 
