@@ -1,0 +1,9 @@
+line-length = 100
+target-version = "py39"
+
+# The frozen verifier is extracted verbatim and its bytes are the artifact;
+# reformatting would break the "copy this one file and run it" property.
+exclude = ["src/lcert_verify/_verifier.py"]
+
+[lint]
+select = ["E", "F", "W"]
