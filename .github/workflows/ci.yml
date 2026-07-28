@@ -56,5 +56,13 @@ jobs:
           cert = L.gate_cert("ci", budget=0.05, safety=1.5, n_photons=100.0,
                              thr=0.30, delta_dose=0.02, loci=[(0.10, 0.11, 0.05)])
           L.make_bundle("ci_bundle", gate_certs=[cert], kpis=[], prereg={"ci": True})
+          # The anchor is written out because the standalone verifier abstains
+          # without one -- exit 4, not a pass. Running it unanchored here would be
+          # asserting the behaviour the tool exists to prevent.
+          open("ci_anchor", "w").write(L.bundle_fingerprint("ci_bundle"))
           PY
-          python -I -S src/lcert_verify/_verifier.py ci_bundle
+          python -I -S src/lcert_verify/_verifier.py ci_bundle "$(cat ci_anchor)"
+          # and the unanchored run must abstain, not pass: exit 4 exactly
+          rc=0
+          python -I -S src/lcert_verify/_verifier.py ci_bundle || rc=$?
+          test "$rc" -eq 4
