@@ -39,7 +39,11 @@ def _sha(*parts: bytes) -> bytes:
 
 
 def _canon(obj) -> bytes:
-    return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    # allow_nan=False: NaN/Infinity are NOT valid JSON. Emitting them produces a
+    # document strict parsers (including every browser) reject, which would make a
+    # certificate verifiable by one implementation and not another. Refuse instead.
+    return json.dumps(obj, sort_keys=True, separators=(",", ":"),
+                      allow_nan=False).encode("utf-8")
 
 
 def derive_master_salt(seed: int) -> bytes:
@@ -381,6 +385,11 @@ def verify_bundle(bundle_dir, expected_sha256: str = "") -> dict:
         bundle = json.loads(raw)
     except ValueError:
         return {"ok": False, "errors": ["bundle.json is not valid JSON"], "fingerprint": fingerprint}
+    if not isinstance(bundle, dict):
+        # Valid JSON, wrong shape. Crashing on hostile input is a denial of service
+        # and an unhelpful failure; reject cleanly instead.
+        return {"ok": False, "fingerprint": fingerprint, "errors": [
+            f"bundle.json must be a JSON object, got {type(bundle).__name__}"]}
     if bundle.get("format") != FORMAT:
         errs.append(f"unsupported format: {bundle.get('format')!r} (want {FORMAT!r})")
         return {"ok": False, "errors": errs, "fingerprint": fingerprint}

@@ -13,13 +13,13 @@ LCERT-1 certificate's verdict from the primitive quantities the certificate carr
 **only the Python standard library**. No numpy. No cryptography package. No network.
 
 ```
-python -I -S _verifier.py my_bundle/
+lcert-verify my_bundle/ <expected-fingerprint>
 ```
 
-That runs with site-packages disabled and isolated mode on. If it exits `0`, the bundle is
-internally consistent, its payload matches its manifest, its Merkle root recomputes, its
-outputs commitment binds its reported values, and **its admission verdict was recomputed from
-scratch rather than read**.
+The fingerprint is the **trust anchor**, obtained out of band. Supply it and you get a definite
+`VERIFIED` or `REFUTED`. Omit it and you get `UNVERIFIED` — because without an anchor this tool
+cannot rule out a forgery in which the inputs and the verdict were edited together, and it will
+not pretend otherwise.
 
 ## Install
 
@@ -51,8 +51,9 @@ L.make_bundle("demo_bundle", gate_certs=[cert],
               kpis=[{"key": "worst_pfail_upper", "value": 0.0041}],
               prereg={"budget": 0.05, "declared": "before measurement"})
 
-print(L.verify_bundle("demo_bundle")["ok"])        # True
-print(L.bundle_fingerprint("demo_bundle"))          # the out-of-band anchor
+fingerprint = L.bundle_fingerprint("demo_bundle")   # publish this out of band
+print(L.verify_bundle("demo_bundle", fingerprint)["verdict"])   # VERIFIED
+print(L.verify_bundle("demo_bundle")["verdict"])                # UNVERIFIED (no anchor)
 ```
 
 Then break it, and watch it get caught:
@@ -62,14 +63,22 @@ import json, pathlib
 import lcert_verify as L
 from lcert_verify import _verifier as V
 
-p = pathlib.Path("demo_bundle/bundle.json")      # built in the quickstart above
+# self-contained: build a bundle, then forge its verdict
+cert = L.gate_cert("clip_a", budget=0.05, safety=1.5, n_photons=100.0,
+                   thr=0.30, delta_dose=0.02,
+                   loci=[(0.10, 0.11, 0.05), (0.09, 0.10, 0.04)])
+L.make_bundle("demo_bundle", gate_certs=[cert], kpis=[],
+              prereg={"budget": 0.05, "declared": "before measurement"})
+fingerprint = L.bundle_fingerprint("demo_bundle")   # captured BEFORE tampering
+
+p = pathlib.Path("demo_bundle/bundle.json")
 b = json.loads(p.read_text())
-b["gate_certs"][0]["recorded"]["interval_admit"] = False      # forge the verdict
+b["gate_certs"][0]["recorded"]["interval_admit"] = False   # forge the verdict
 p.write_bytes(V._canon(b) + b"\n")   # rewrite *canonically*, so the forgery is the only defect
 
-res = L.verify_bundle("demo_bundle")
-print(res["ok"])        # False
-print(res["errors"])    # ['[clip_a] recorded interval_admit=False but re-derived True']
+res = L.verify_bundle("demo_bundle", fingerprint)
+print(res["verdict"])   # REFUTED
+print(res["errors"][0]) # [clip_a] recorded interval_admit=False but re-derived True
 ```
 
 Note the canonical rewrite. A careless edit with `json.dumps` is caught one step earlier, by the
@@ -85,6 +94,19 @@ The re-derivation uses only IEEE-754 double `+ - * <`, `max`, and `nextafter`, p
 Those operations are correctly rounded by the standard, and CPython floats *are* IEEE doubles, so
 a pure-Python re-derivation is bit-identical to the producer's — on any platform. That is why this
 verifier can be a few hundred lines and still be exact.
+
+
+## Honest scope — what this proves, and what it does not
+
+| Question | Answer |
+|---|---|
+| Is the artifact internally consistent, and does its verdict follow from its own numbers? | **Yes, always checked.** |
+| Was the artifact altered after it was produced, in a way that leaves an inconsistency? | **Yes, always caught.** |
+| Was the artifact altered *consistently* — inputs and verdict edited together? | **Only with an out-of-band fingerprint.** Without one this tool returns `UNVERIFIED` and refuses to assert. |
+| Do the numbers in it describe your physical design? | **Never checked.** That needs sound enclosures over process models — a separate commercial product. |
+
+The rule this code follows: **when in doubt, refuse.** A verdict of `UNVERIFIED` is not a
+failure of your certificate; it is this tool declining to claim something it has not established.
 
 ## What is checked — and what is not
 

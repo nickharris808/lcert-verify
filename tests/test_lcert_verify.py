@@ -33,9 +33,18 @@ def _bundle(tmp_path: Path, loci=SAFE_LOCI, name="clip_a"):
 
 def test_roundtrip_verifies(tmp_path):
     d = _bundle(tmp_path)
-    res = L.verify_bundle(d)
+    res = L.verify_bundle(d, L.bundle_fingerprint(d))     # anchored: assertion allowed
     assert res["ok"] is True, res["errors"]
     assert res["errors"] == []
+    assert res["verdict"] == "VERIFIED"
+
+
+def test_roundtrip_abstains_without_an_anchor(tmp_path):
+    """The same honest bundle, unanchored, must abstain rather than pass."""
+    d = _bundle(tmp_path)
+    res = L.verify_bundle(d)
+    assert res["ok"] is False and res["verdict"] == "UNVERIFIED"
+    assert res["internally_consistent"] is True
 
 
 def test_verdict_is_rederived_not_trusted(tmp_path):
@@ -56,7 +65,9 @@ def test_unsafe_loci_do_not_admit(tmp_path):
                        thr=0.30, delta_dose=0.02, loci=UNSAFE_LOCI)
     assert cert["recorded"]["interval_admit"] is False
     L.make_bundle(tmp_path, gate_certs=[cert], kpis=[], prereg=PREREG)
-    assert L.verify_bundle(tmp_path)["ok"] is True  # honestly recorded REJECT still verifies
+    # An honestly recorded REJECT is a true statement, so the bundle still verifies.
+    res = L.verify_bundle(tmp_path, L.bundle_fingerprint(tmp_path))
+    assert res["ok"] is True and res["verdict"] == "VERIFIED"
 
 
 def test_tamper_kappa_rejected(tmp_path):
@@ -164,8 +175,8 @@ def test_scope_is_published():
 def test_cli_wrapper_verifies_a_good_bundle(tmp_path, capsys):
     from lcert_verify.cli import main as cli_main
     d = _bundle(tmp_path)
-    assert cli_main([str(d)]) == 0
-    assert "VERDICT: PASS" in capsys.readouterr().out
+    assert cli_main([str(d), L.bundle_fingerprint(d)]) == 0
+    assert "VERDICT: VERIFIED" in capsys.readouterr().out
 
 
 def test_cli_wrapper_rejects_a_tampered_bundle(tmp_path, capsys):
@@ -175,15 +186,15 @@ def test_cli_wrapper_rejects_a_tampered_bundle(tmp_path, capsys):
     b = json.loads((d / "bundle.json").read_text())
     b["gate_certs"][0]["recorded"]["interval_admit"] = False
     (d / "bundle.json").write_bytes(V._canon(b) + b"\n")
-    assert cli_main([str(d)]) == 1
-    assert "VERDICT: FAIL" in capsys.readouterr().out
+    assert cli_main([str(d), L.bundle_fingerprint(d)]) != 0
+    assert "VERDICT: REFUTED" in capsys.readouterr().out
 
 
 def test_cli_wrapper_accepts_expected_fingerprint(tmp_path):
     from lcert_verify.cli import main as cli_main
     d = _bundle(tmp_path)
     assert cli_main([str(d), L.bundle_fingerprint(d)]) == 0
-    assert cli_main([str(d), "ab" * 32]) == 1
+    assert cli_main([str(d), "ab" * 32]) == 2       # integrity failure has its own code
 
 
 def test_cli_wrapper_scope_flag(tmp_path, capsys):
@@ -194,16 +205,16 @@ def test_cli_wrapper_scope_flag(tmp_path, capsys):
 
 def test_cli_wrapper_no_args_is_usage(tmp_path):
     from lcert_verify.cli import main as cli_main
-    assert cli_main([]) == 1
+    assert cli_main([]) == 5                        # usage error is distinct
 
 
 def test_console_script_end_to_end(tmp_path):
     """Run the installed entry point exactly as a shell user would."""
     d = _bundle(tmp_path)
-    r = subprocess.run([sys.executable, "-m", "lcert_verify.cli", str(d)],
-                       capture_output=True, text=True)
+    r = subprocess.run([sys.executable, "-m", "lcert_verify.cli", str(d),
+                        L.bundle_fingerprint(d)], capture_output=True, text=True)
     assert r.returncode == 0, r.stdout + r.stderr
-    assert "VERDICT: PASS" in r.stdout
+    assert "VERDICT: VERIFIED" in r.stdout
 
 
 # ---------- vacuity guard ----------
@@ -213,7 +224,7 @@ def test_console_script_end_to_end(tmp_path):
 
 def test_empty_bundle_is_refused_by_default(tmp_path):
     L.make_bundle(tmp_path, gate_certs=[], kpis=[], prereg={"x": 1})
-    res = L.verify_bundle(tmp_path)
+    res = L.verify_bundle(tmp_path, L.bundle_fingerprint(tmp_path))
     assert res["ok"] is False
     assert res["n_certificates"] == 0
     assert any("no certificates" in e for e in res["errors"])
@@ -221,32 +232,38 @@ def test_empty_bundle_is_refused_by_default(tmp_path):
 
 def test_empty_bundle_allowed_when_explicitly_requested(tmp_path):
     L.make_bundle(tmp_path, gate_certs=[], kpis=[], prereg={"x": 1})
-    assert L.verify_bundle(tmp_path, require_certs=False)["ok"] is True
+    res = L.verify_bundle(tmp_path, L.bundle_fingerprint(tmp_path), require_certs=False)
+    assert res["ok"] is True
+    # ...but it must never read as VERIFIED: nothing had a proof obligation.
+    assert res["verdict"] == "VERIFIED-VACUOUS"
+    assert res["n_gated_loci"] == 0
 
 
 def test_stripping_certificates_is_caught(tmp_path):
     """The original attack: delete the certificates from a good bundle."""
     from lcert_verify import _verifier as V
     d = _bundle(tmp_path)
-    assert L.verify_bundle(d)["ok"] is True
+    assert L.verify_bundle(d, L.bundle_fingerprint(d))["ok"] is True
     b = json.loads((d / "bundle.json").read_text())
     b["gate_certs"] = []
     (d / "bundle.json").write_bytes(V._canon(b) + b"\n")
-    assert L.verify_bundle(d)["ok"] is False
+    res = L.verify_bundle(d, L.bundle_fingerprint(d))
+    assert res["ok"] is False and res["verdict"] == "VACUOUS"
 
 
 def test_certificate_count_is_reported(tmp_path):
     d = _bundle(tmp_path)
-    assert L.verify_bundle(d)["n_certificates"] == 1
+    assert L.verify_bundle(d, L.bundle_fingerprint(d))["n_certificates"] == 1
 
 
 def test_cli_reports_count_and_refuses_empty(tmp_path, capsys):
     from lcert_verify.cli import main as cli_main
     L.make_bundle(tmp_path, gate_certs=[], kpis=[], prereg={})
-    assert cli_main([str(tmp_path)]) == 1
+    fp = L.bundle_fingerprint(tmp_path)
+    assert cli_main([str(tmp_path), fp]) == 3           # vacuous has its own code
     out = capsys.readouterr().out
-    assert "certificates checked: 0" in out and "VERDICT: FAIL" in out
-    assert cli_main([str(tmp_path), "--allow-empty"]) == 0
+    assert "certificates:       0" in out and "VERDICT: VACUOUS" in out
+    assert cli_main([str(tmp_path), fp, "--allow-empty"]) == 0
 
 
 def test_package_exposes_version_and_all():
