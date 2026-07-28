@@ -1,10 +1,11 @@
 # lcert-verify
 
+[![ci](https://github.com/nickharris808/lcert-verify/actions/workflows/ci.yml/badge.svg)](https://github.com/nickharris808/lcert-verify/actions/workflows/ci.yml)
 ![license](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![python](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)
 ![dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
-![tests](https://img.shields.io/badge/tests-25%20passing-brightgreen)
-![status](https://img.shields.io/badge/status-pre--release-orange)
+![tests](https://img.shields.io/badge/tests-26%20passing-brightgreen)
+[![ci](https://github.com/nickharris808/lcert-verify/actions/workflows/ci.yml/badge.svg)](https://github.com/nickharris808/lcert-verify/actions/workflows/ci.yml)
 
 **Check a manufacturing certificate without trusting whoever produced it — or installing anything.**
 
@@ -23,11 +24,10 @@ scratch rather than read**.
 
 ## Install
 
-> **Status: pre-release.** Not yet on PyPI. Until it is published, install from a
-> checkout:
+> **Not yet on PyPI.** Install from the repository — it works exactly the same:
 >
 > ```
-> pip install ./lcert-verify
+> pip install git+https://github.com/nickharris808/lcert-verify.git
 > ```
 
 ```
@@ -114,3 +114,27 @@ computes no physics — it is a producer of *well-formed* bundles, not of *meani
 ## License
 
 Apache-2.0. Use it, vendor it, ship it in a commercial product. The format spreading is the goal.
+
+---
+
+## The rest of the toolkit
+
+One idea, six pieces: **a recorded verdict is a claim to be checked, never an input to be trusted.**
+
+| | |
+|---|---|
+| [**lcert-verify**](https://github.com/nickharris808/lcert-verify) | Re-derive a manufacturing certificate's verdict. Stdlib only. |
+| [**equiv-receipt**](https://github.com/nickharris808/equiv-receipt) | Prove two circuits equivalent, with a receipt anyone can re-check. |
+| [**prereg-seal**](https://github.com/nickharris808/prereg-seal) | Seal acceptance criteria before you measure. |
+| [**cert-atlas**](https://github.com/nickharris808/cert-atlas) | 21 labelled forgeries and a metric no degenerate verifier can win. |
+| [**certified-mcp**](https://github.com/nickharris808/certified-mcp) | The above, as tools your AI agent can call. |
+| [**lcert-verify-web**](https://github.com/nickharris808/lcert-verify-web) | The verifier in a browser. Nothing uploaded. |
+
+**Try it now, no install:** [🔏 the verifier Space](https://huggingface.co/spaces/nickh007/cert-verifier) ·
+**Browse the forgeries:** [📊 the atlas dataset](https://huggingface.co/datasets/nickh007/cert-atlas)
+
+### Where the free edition stops
+
+Everything here **checks**. None of it **produces** a certificate that is physically meaningful —
+that needs sound enclosures over real process models, which is a separate commercial product. If
+you need certificates rather than a way to check them, that is the conversation to have.
