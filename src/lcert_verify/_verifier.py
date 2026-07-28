@@ -328,6 +328,87 @@ def verify_image_bound_certs(bundle: dict) -> list:
     return errs
 
 
+def verify_interval_bound_certs(bundle: dict) -> list:
+    """Re-derive every LCERT-BOUND-1 certificate — the domain-agnostic kind.
+
+    A producer supplies, per locus, an outward-rounded interval ``[lo, hi]`` for
+    some quantity, plus a threshold and which side of it is safe. This function
+    recomputes the admission verdict from those numbers and rejects any recorded
+    claim that is more favourable than the re-derivation.
+
+    **It computes no physics, and that is deliberate.** Where the intervals come
+    from — a thermal solver, a timing engine, a model evaluation — is the
+    producer's problem and its evidence. What is checked here is that the verdict
+    written down follows from the numbers written down. That is the part a third
+    party can do without trusting anyone, and it is the only part this file
+    claims to do.
+    """
+    errs = []
+    for cert in bundle.get("interval_bound_certs", []):
+        name = cert.get("name", "?")
+        direction = cert.get("direction")
+        if direction not in ("below", "above"):
+            errs.append(f"[{name}] direction must be 'below' or 'above', "
+                        f"got {direction!r}")
+            continue
+        try:
+            thr = float(cert["threshold"])
+            lo = [float(x) for x in cert["loci"]["lo"]]
+            hi = [float(x) for x in cert["loci"]["hi"]]
+        except (KeyError, TypeError, ValueError) as e:
+            errs.append(f"[{name}] malformed certificate: {e}")
+            continue
+        if len(lo) != len(hi):
+            errs.append(f"[{name}] E_LOCUS_COUNT: {len(lo)} lower bounds vs "
+                        f"{len(hi)} upper bounds")
+            continue
+        if not _finite(thr) or not all(_finite(x) for x in lo + hi):
+            errs.append(f"[{name}] non-finite value in the certificate")
+            continue
+        bad_interval = [j for j in range(len(lo)) if lo[j] > hi[j]]
+        if bad_interval:
+            errs.append(f"[{name}] E_INVERTED_INTERVAL: locus {bad_interval[0]} has "
+                        f"lo > hi, which encloses nothing")
+            continue
+
+        # Re-derivation. Comparisons and one subtraction per locus: deterministic,
+        # so a faithful producer reproduces these bytes exactly.
+        violating, margins = 0, []
+        for j in range(len(lo)):
+            if direction == "below":
+                margin = thr - hi[j]
+            else:
+                margin = lo[j] - thr
+            margins.append(margin)
+            if margin <= 0.0:
+                violating += 1
+        worst = min(margins) if margins else 0.0
+        red = {"admit": violating == 0 and len(lo) > 0,
+               "n_violating": violating, "n_loci": len(lo),
+               "worst_margin": worst}
+
+        rec = cert.get("recorded", {})
+        for key in ("admit", "n_violating", "n_loci"):
+            if rec.get(key) != red[key]:
+                errs.append(f"[{name}] recorded {key}={rec.get(key)!r} but "
+                            f"re-derived {red[key]!r}")
+        rec_worst = rec.get("worst_margin")
+        if isinstance(rec_worst, (int, float)) and _finite(float(rec_worst)):
+            # Claiming MORE margin than the numbers support is the attack. Claiming
+            # less is merely conservative, and is allowed.
+            if float(rec_worst) > red["worst_margin"]:
+                errs.append(f"[{name}] E_MARGIN_OVERSTATED: recorded worst margin "
+                            f"{rec_worst!r} exceeds the re-derived "
+                            f"{red['worst_margin']!r}")
+        elif rec_worst is not None:
+            errs.append(f"[{name}] worst_margin is not a finite number: {rec_worst!r}")
+    return errs
+
+
+def _finite(x) -> bool:
+    return x == x and x not in (float("inf"), float("-inf"))
+
+
 def verify_manifest_and_root(bundle_dir: Path, bundle: dict) -> list:
     errs = []
     manifest = bundle.get("manifest", {})
@@ -400,6 +481,7 @@ def verify_bundle(bundle_dir, expected_sha256: str = "") -> dict:
     errs += verify_gate_certs(bundle)
     errs += verify_resource_floor_certs(bundle)
     errs += verify_image_bound_certs(bundle)
+    errs += verify_interval_bound_certs(bundle)
     # `_parsed` is returned so callers need not parse bundle.json a second time.
     # It is stripped by the public wrapper and is not part of the result contract.
     return {"ok": not errs, "errors": errs, "fingerprint": fingerprint, "_parsed": bundle}

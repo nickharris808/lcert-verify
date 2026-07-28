@@ -22,7 +22,8 @@ from . import _verifier as V
 
 
 def make_bundle(bundle_dir, *, gate_certs=None, kpis=None, prereg=None, seed: int = 149,
-                payload_files=None, image_bound_certs=None, resource_floor_certs=None) -> Path:
+                payload_files=None, image_bound_certs=None, resource_floor_certs=None,
+                interval_bound_certs=None) -> Path:
     """Write a canonical bundle directory; return the path to ``bundle.json``.
 
     ``prereg`` is any JSON-serializable object recording what was declared
@@ -71,6 +72,8 @@ def make_bundle(bundle_dir, *, gate_certs=None, kpis=None, prereg=None, seed: in
         bundle["image_bound_certs"] = list(image_bound_certs)
     if resource_floor_certs:
         bundle["resource_floor_certs"] = list(resource_floor_certs)
+    if interval_bound_certs:
+        bundle["interval_bound_certs"] = list(interval_bound_certs)
 
     out = bundle_dir / "bundle.json"
     out.write_bytes(V._canon(bundle) + b"\n")
@@ -129,3 +132,41 @@ def gate_cert(name: str, *, budget: float, safety: float, n_photons: float,
     cert["recorded"]["float_admit"] = red["interval_admit"]
     cert["recorded"]["match"] = True
     return cert
+
+
+def interval_bound_cert(name: str, *, quantity: str, unit: str, threshold: float,
+                        direction: str, loci, evidence: str = "") -> dict:
+    """Assemble a domain-agnostic LCERT-BOUND-1 certificate.
+
+    ``loci`` is an iterable of ``(lo, hi)`` pairs: your outward-rounded enclosure
+    of the quantity at each locus. ``direction`` is ``"below"`` (safe means the
+    upper bound stays under the threshold) or ``"above"``.
+
+    The verdict is **derived here and re-derived by the verifier**, never
+    supplied. Nothing about this certificate is lithography-specific; where the
+    intervals come from is your analysis and your evidence, and this file does
+    not and cannot compute them.
+    """
+    if direction not in ("below", "above"):
+        raise ValueError("direction must be 'below' or 'above'")
+    lo, hi = [], []
+    for i, pair in enumerate(loci):
+        a, c = float(pair[0]), float(pair[1])
+        if a > c:
+            raise ValueError(f"locus {i}: lo {a} > hi {c} encloses nothing")
+        lo.append(a)
+        hi.append(c)
+    thr = float(threshold)
+    margins = [(thr - hi[j]) if direction == "below" else (lo[j] - thr)
+               for j in range(len(lo))]
+    violating = sum(1 for m in margins if m <= 0.0)
+    return {
+        "kind": "interval-bound/1",
+        "name": name, "quantity": quantity, "unit": unit,
+        "threshold": thr, "direction": direction,
+        "evidence": evidence,
+        "loci": {"lo": lo, "hi": hi},
+        "recorded": {"admit": violating == 0 and len(lo) > 0,
+                     "n_violating": violating, "n_loci": len(lo),
+                     "worst_margin": min(margins) if margins else 0.0},
+    }

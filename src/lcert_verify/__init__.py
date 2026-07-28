@@ -15,12 +15,21 @@ from ._verifier import (  # noqa: F401
     outputs_commitment,
     rederive_gate_verdict,
     verify_gate_certs,
+    verify_interval_bound_certs,
     verify_kpis,
     verify_manifest_and_root,
 )
 from ._verifier import verify_bundle as _verify_bundle_raw
-from .builder import bundle_fingerprint, gate_cert, kappa_for_budget, make_bundle  # noqa: F401
+from .builder import (  # noqa: F401
+    bundle_fingerprint,
+    gate_cert,
+    interval_bound_cert,
+    kappa_for_budget,
+    make_bundle,
+)
+from .diff import diff_bundles, format_diff  # noqa: F401
 from .explain import explain_certificate, format_explanation  # noqa: F401
+from .html import to_html  # noqa: F401
 from .report import emit, to_json, to_jsonl, to_junit, to_sarif  # noqa: F401
 
 
@@ -132,7 +141,8 @@ def _count_certs(b) -> int:
     if not isinstance(b, dict):
         return 0
     return sum(len(b.get(k) or []) for k in
-               ("gate_certs", "image_bound_certs", "resource_floor_certs"))
+               ("gate_certs", "image_bound_certs", "resource_floor_certs",
+                "interval_bound_certs"))
 
 
 def _count_gated_loci(b) -> int:
@@ -143,6 +153,9 @@ def _count_gated_loci(b) -> int:
     for c in b.get("gate_certs") or []:
         loci = c.get("loci") or {}
         n += len(loci.get("ae0") or [])
+    for c in b.get("interval_bound_certs") or []:
+        loci = c.get("loci") or {}
+        n += len(loci.get("lo") or [])
     return n
 
 
@@ -167,9 +180,11 @@ def _nonfinite_fields(b):
 __version__ = "1.0.0"
 __all__ = [
     "FORMAT", "SCOPE", "verify_bundle", "verify_gate_certs", "verify_kpis",
+    "verify_interval_bound_certs", "interval_bound_cert",
     "verify_manifest_and_root", "rederive_gate_verdict", "check_kappa_K",
     "derive_master_salt", "derive_tile_salts", "leaf_hash", "merkle_root",
     "outputs_commitment", "make_bundle", "gate_cert", "kappa_for_budget",
     "bundle_fingerprint", "explain_certificate", "format_explanation",
-    "emit", "to_json", "to_jsonl", "to_sarif", "to_junit", "__version__",
+    "emit", "to_json", "to_jsonl", "to_sarif", "to_junit", "to_html",
+    "diff_bundles", "format_diff", "__version__",
 ]

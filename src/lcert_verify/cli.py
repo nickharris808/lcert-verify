@@ -49,10 +49,17 @@ def main(argv=None) -> int:
     ap.add_argument("--allow-empty", action="store_true",
                     help="permit a bundle that certifies nothing")
     ap.add_argument("--json", action="store_true", help="machine-readable output (JSON)")
-    ap.add_argument("--format", choices=["text", "json", "jsonl", "sarif", "junit"],
+    ap.add_argument("--format",
+                    choices=["text", "json", "jsonl", "sarif", "junit", "html"],
                     default=None,
                     help="output format. sarif renders in GitHub code scanning; "
-                         "junit appears in any CI test report")
+                         "junit appears in any CI test report; html is a "
+                         "self-contained page with a per-locus margin chart")
+    ap.add_argument("--diff", metavar="OTHER_BUNDLE", default=None,
+                    help="compare against another bundle: which certificates "
+                         "changed class and which way the margins moved")
+    ap.add_argument("--diff-anchor", default="",
+                    help="trust anchor for the bundle given to --diff")
     ap.add_argument("-o", "--output", default=None,
                     help="write the report to this file instead of stdout")
     ap.add_argument("--scope", action="store_true", help="print what is and is not checked")
@@ -69,11 +76,39 @@ def main(argv=None) -> int:
         ap.print_usage(sys.stderr)
         return EXIT_USAGE
 
+    if a.diff:
+        from .diff import diff_bundles, format_diff
+        d = diff_bundles(a.bundle_dir, a.diff, anchor_a=a.expected_sha256,
+                         anchor_b=a.diff_anchor)
+        if a.format in ("json", "jsonl"):
+            import json as _j
+            print(_j.dumps(d, indent=2 if a.format == "json" else None, sort_keys=True))
+        else:
+            print(format_diff(d))
+        # A diff reports movement; it is not a verdict. Non-zero only when
+        # something got worse, so it is usable as a regression gate.
+        return 1 if d["n_regressed"] else EXIT_OK
+
     res = verify_bundle(a.bundle_dir, a.expected_sha256,
                         require_certs=not a.allow_empty,
                         require_anchor=not a.no_anchor)
 
     fmt = a.format or ("json" if a.json else "text")
+    if fmt == "html":
+        import json as _json
+        from pathlib import Path as _P
+        from .html import to_html
+        try:
+            b = _json.loads((_P(a.bundle_dir) / "bundle.json").read_text())
+        except (OSError, ValueError):
+            b = {}
+        out = to_html(res, b, source=str(a.bundle_dir))
+        if a.output:
+            _P(a.output).write_text(out, encoding="utf-8")
+            print(f"wrote html report to {a.output}")
+        else:
+            print(out, end="")
+        return _exit_code(res)
     if fmt != "text":
         from .report import emit
         out = emit(res, fmt, source=str(a.bundle_dir))

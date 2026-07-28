@@ -112,6 +112,49 @@ verifier can be a few hundred lines and still be exact.
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** — the errors you will actually hit, with fixes
 - **[PERFORMANCE.md](PERFORMANCE.md)** — measured throughput (~1.3 µs/locus, linear)
 
+
+## Beyond a pass/fail
+
+```bash
+lcert-verify a/ "$FP_A" --diff b/ --diff-anchor "$FP_B"   # did my change help?
+lcert-verify a/ "$FP_A" --format html -o report.html      # per-locus margin chart
+```
+
+**`--diff`** compares two bundles: which certificates changed class, which way the margins
+moved, what was added or dropped. It exits non-zero only on a regression, so it works as a gate.
+Losing admission counts as a regression however the numbers moved, and dropping a certificate
+counts too — a bundle that certifies less is not an improvement. If either side does not verify,
+the diff says so rather than quietly comparing two documents of unknown provenance.
+
+**`--format html`** writes one self-contained file — no network, no scripts, no dependencies —
+with a signed per-locus margin chart. A locus that does not clear the threshold has a negative
+margin and its bar points the other way, so the **geometry** carries the meaning; colour only
+repeats it. That is deliberate: green and red are the one pair red-green colour blindness
+collapses (ΔE 4.1, against a floor of 8), so the bar direction, a hatch fill, a direct text label
+and a table view each say it independently. `straddling` — where the enclosure spans the boundary
+and neither answer is established — is drawn as its own third state rather than rounded to one
+side, and the chart defers to the same `explain` code the verdict comes from, so it cannot
+contradict the verdict printed beside it.
+
+## A certificate kind that is not about lithography
+
+`LCERT-BOUND-1` is domain-agnostic: per-locus intervals for any quantity, a threshold, and which
+side of it is safe.
+
+```python
+cert = L.interval_bound_cert("hotspots", quantity="junction temperature", unit="K",
+                             threshold=358.15, direction="below",
+                             loci=[(340.0, 351.2), (338.4, 349.9)])
+```
+
+The verifier recomputes admission from those numbers. **Overstating your margin is caught;
+understating it is allowed**, because conservatism is not a lie. It is re-derived identically by
+the JavaScript implementation, and the conformance suite checks the two agree on cases including
+a locus exactly on the threshold and one a single ULP inside it.
+
+To produce bundles ergonomically — preregistration, evidence files, self-verification on write —
+see **[lcert-build](https://github.com/nickharris808/lcert-build)**.
+
 ## Honest scope — what this proves, and what it does not
 
 | Question | Answer |

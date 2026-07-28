@@ -63,23 +63,39 @@ comfortable and 10⁸ would be ~2 minutes single-threaded — usable, and trivia
 parallel across tiles since each certificate verifies independently. No optimisation is
 needed for any size we can currently measure.
 
-## equiv-receipt — fast in practice, quadratic in principle
+## equiv-receipt — watched literals, and the checker that could not read real proofs
 
-| Instance | Clauses | Lemmas | Check |
-|---|---|---|---|
-| chain | 5,000 | 1 | 0.8 ms |
-| PHP(4,3) | 22 | 17 | <1 ms |
-| PHP(5,4) | 45 | 103 | <1 ms |
-| PHP(6,5) | 81 | 749 | 50 ms |
+Two things were wrong with the DRAT checker, and only one of them was speed.
 
-`forward_rup_check` rescans the active clause set per lemma, so cost is
-**O(clauses × lemmas)**. That is real, and it is honest to state it: at 10⁴ lemmas over
-10³ clauses it would be seconds, not milliseconds.
+**It rejected every proof a real solver produces.** Real solvers emit **RAT** lemmas when they
+eliminate variables. The checker only knew RUP, so it bailed at the first one. Measured against
+CaDiCaL proofs of pigeonhole instances: **5 of 5 rejected**, each within the first few lemmas.
+That was not slowness — it was the external-solver path being unusable. RAT checking, plus
+deletion lines, fixed it. Those same 5 proofs now verify, and 42 of the 351 lemmas in the
+PHP(7,6) proof need the RAT path.
 
-It does not bite today because the bundled `minisolve` cannot reach instances that
-large — it raises at its declared depth first. Should anyone check proofs from a real
-solver at scale, watched literals are the fix. Until someone does, adding them would be
-optimising a path nobody walks.
+**And it was slow on long proofs.** Naive propagation re-scanned every active clause on every
+round, and the active set grows by one per lemma. Two watched literals per clause, an index for
+deletion, and truth tracked as a set of true *literals* rather than a variable map:
+
+| Instance | Clauses × lemmas | Before | After | Speedup |
+|---|---|---|---|---|
+| PHP(5,4) | 45 × 103 | 1.7 ms | 0.8 ms | 2.1× |
+| PHP(6,5) | 81 × 749 | 54.9 ms | 11.8 ms | 4.7× |
+| PHP(7,6) | 133 × 6,491 | 3,775 ms | 380 ms | **9.9×** |
+
+**This missed its target and the target was right to set.** The goal was ≥20× (under 200 ms on
+PHP(7,6)); the result is 9.9× at 380 ms. What remains is Python interpreter cost in the
+propagation loop, not an algorithmic defect — profiling shows 89% of the time inside `propagate`
+with no single hot call to remove. Getting the rest needs backward (core-first) checking, which is
+how DRAT-trim does it and is a much larger change. It is not done, and this table says so.
+
+Those proofs come from the bundled solver, which emits **no deletion lines**, so the clause set
+grows monotonically — the pathological case. A real solver's proof of the same instance is 351
+lemmas with deletions and checks in **3.9 ms**.
+
+The naive implementation is still there, still the specification, and 25 randomised differential
+tests check the fast path against it on every run.
 
 ## prereg-seal — dominated by JSON serialisation
 
