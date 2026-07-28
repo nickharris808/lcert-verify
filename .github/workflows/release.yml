@@ -1,0 +1,41 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"          # e.g. v1.0.0
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write     # PyPI Trusted Publishing (OIDC) — no API token is stored
+
+jobs:
+  publish:
+    name: build and publish to PyPI
+    runs-on: ubuntu-latest
+    environment: pypi
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # Never publish something that does not pass. A release is the one moment
+      # a broken artifact is hardest to take back.
+      - name: Test
+        run: |
+          pip install -e ".[test]"
+          pytest -q
+
+      - name: Build sdist and wheel
+        run: |
+          pip install --quiet build twine
+          python -m build
+          twine check dist/*
+
+      # This repository has no dependencies, so its metadata carries no direct
+      # URL reference — which PyPI rejects. Packages in this portfolio that
+      # depend on the others cannot be uploaded until these leaves are on PyPI
+      # and their pins can become ordinary version specifiers.
+      - uses: pypa/gh-action-pypi-publish@release/v1
