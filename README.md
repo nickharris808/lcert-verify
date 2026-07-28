@@ -36,6 +36,15 @@ pip install lcert-verify
 Or don't. Copy `src/lcert_verify/_verifier.py` — it is a single self-contained file — and run it.
 That is a supported use, and it is the point.
 
+```
+python -I -S _verifier.py my_bundle/ <expected_sha256>   # PASS / FAIL
+python -I -S _verifier.py my_bundle/                     # UNVERIFIED — abstains, exit 4
+```
+
+Because it is a supported path it holds the same line as the installed CLI: with no
+expected fingerprint it **abstains** rather than passing. Passing every internal check is
+not the same as being the artifact you were promised.
+
 ## 30-second quickstart
 
 ```python

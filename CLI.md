@@ -69,6 +69,19 @@ answer this tool exists to avoid. The exit code is unchanged by `--format`: a
 CI can branch on these: a `4` means "you forgot the anchor", a `2` means "these bytes are
 not the artifact you expected", and they warrant different responses.
 
+## The standalone file
+
+`src/lcert_verify/_verifier.py` runs on its own, with no install and no dependencies:
+
+```
+python -I -S _verifier.py <bundle_dir> [expected_sha256] [--no-anchor] [--scope]
+```
+
+It uses the same exit codes and holds the same line: no anchor means `UNVERIFIED` and
+exit `4`, not a pass. A check that actually fails is reported as `FAIL` and exit `1`
+whether or not an anchor was given — abstention is for absence of evidence, and a failed
+check is evidence.
+
 ## Python API
 
 | Function | Purpose |

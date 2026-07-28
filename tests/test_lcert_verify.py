@@ -142,12 +142,68 @@ def test_empty_loci_is_trivially_admit():
 
 
 def test_runs_isolated_with_no_site_packages(tmp_path):
-    """The headline property: verifies under `python -I -S`, no third-party imports."""
+    """The headline property: verifies under `python -I -S`, no third-party imports.
+
+    Anchored on purpose. An unanchored run abstains (see the test below), so
+    asserting exit 0 without a fingerprint would have quietly asserted the wrong
+    behaviour rather than the isolation property this test is about.
+    """
     d = _bundle(tmp_path)
     standalone = Path(L.__file__).parent / "_verifier.py"
-    out = subprocess.run([sys.executable, "-I", "-S", str(standalone), str(d)],
-                         capture_output=True, text=True)
+    out = subprocess.run([sys.executable, "-I", "-S", str(standalone), str(d),
+                          L.bundle_fingerprint(d)], capture_output=True, text=True)
     assert out.returncode == 0, out.stdout + out.stderr
+    assert "VERDICT: PASS" in out.stdout
+
+
+def _isolated(d, *extra):
+    standalone = Path(L.__file__).parent / "_verifier.py"
+    return subprocess.run([sys.executable, "-I", "-S", str(standalone), str(d), *extra],
+                          capture_output=True, text=True)
+
+
+def test_standalone_abstains_without_an_anchor(tmp_path):
+    """Copying the single file is a supported use, so it must not pass unanchored.
+
+    A self-consistent forgery passes every internal check. If this path printed
+    PASS, the file the README tells people to read and trust would be the one
+    place the hallucination class survived.
+    """
+    out = _isolated(_bundle(tmp_path))
+    assert out.returncode == 4, out.stdout + out.stderr
+    assert "VERDICT: UNVERIFIED" in out.stdout
+    assert "VERDICT: PASS" not in out.stdout
+    assert "out of" in out.stdout and "band" in out.stdout
+
+
+def test_standalone_waives_the_anchor_only_when_asked(tmp_path):
+    out = _isolated(_bundle(tmp_path), "--no-anchor")
+    assert out.returncode == 0
+    assert "INTERNALLY-CONSISTENT" in out.stdout
+
+
+def test_standalone_rejects_a_wrong_anchor(tmp_path):
+    out = _isolated(_bundle(tmp_path), "ab" * 32)
+    assert out.returncode == 1
+    assert "VERDICT: FAIL" in out.stdout
+
+
+def test_standalone_reports_a_real_failure_even_unanchored(tmp_path):
+    """Abstention is for absence of evidence. A failed check is evidence."""
+    d = _bundle(tmp_path)
+    b = json.loads((d / "bundle.json").read_text())
+    b["gate_certs"][0]["recorded"]["interval_admit"] = False
+    (d / "bundle.json").write_bytes(json.dumps(b).encode())
+    out = _isolated(d)
+    assert out.returncode == 1
+    assert "VERDICT: FAIL" in out.stdout
+
+
+def test_standalone_usage_error_has_its_own_exit_code():
+    standalone = Path(L.__file__).parent / "_verifier.py"
+    out = subprocess.run([sys.executable, "-I", "-S", str(standalone)],
+                         capture_output=True, text=True)
+    assert out.returncode == 5, "usage errors must not be confused with a verdict"
 
 
 def test_isolated_run_fails_on_tamper(tmp_path):

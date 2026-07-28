@@ -36,3 +36,25 @@ jobs:
           python-version: "3.12"
       - run: pip install --quiet ruff
       - run: ruff check .
+
+  no-dependencies:
+    name: runs with no site-packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # The core verifier is one stdlib-only file, so that it can be read in full by
+      # someone deciding whether to trust it. `python -I -S` runs it with no
+      # site-packages and no user site: if a dependency ever creeps in, this fails.
+      - name: Verify a bundle with an isolated interpreter
+        run: |
+          pip install -e .
+          python - <<'PY'
+          import lcert_verify as L
+          cert = L.gate_cert("ci", budget=0.05, safety=1.5, n_photons=100.0,
+                             thr=0.30, delta_dose=0.02, loci=[(0.10, 0.11, 0.05)])
+          L.make_bundle("ci_bundle", gate_certs=[cert], kpis=[], prereg={"ci": True})
+          PY
+          python -I -S src/lcert_verify/_verifier.py ci_bundle

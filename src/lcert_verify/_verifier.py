@@ -406,21 +406,47 @@ def verify_bundle(bundle_dir, expected_sha256: str = "") -> dict:
 
 
 def main(argv) -> int:
-    args = [a for a in argv[1:] if a != "--scope"]
-    if "--scope" in argv[1:]:
+    """Command line for the standalone file.
+
+    Copying this one file and running it is a supported use, so it must hold the
+    same line as the installed CLI: passing every internal check is NOT the same
+    as being the artifact you were promised. With no expected fingerprint there is
+    no evidence either way, so the answer is an abstention, not a pass.
+
+    A failed check is different — that is evidence, and it is reported as a
+    failure whether or not an anchor was given.
+    """
+    flags = {a for a in argv[1:] if a.startswith("--")}
+    args = [a for a in argv[1:] if not a.startswith("--")]
+    if "--scope" in flags:
         print(SCOPE)
         if not args:
             return 0
     if not args:
-        print("usage: verify_bundle.py <bundle_dir> [expected_bundle_sha256] [--scope]")
-        return 1
+        print("usage: verify_bundle.py <bundle_dir> [expected_bundle_sha256] "
+              "[--no-anchor] [--scope]")
+        return 5
     expected = args[1] if len(args) > 1 else ""
     res = verify_bundle(args[0], expected)
     print(f"bundle fingerprint: sha256:{res['fingerprint']}")
     for e in res["errors"]:
         print(f"FAIL: {e}")
-    print("VERDICT: PASS" if res["ok"] else "VERDICT: FAIL")
-    return 0 if res["ok"] else 1
+    if not res["ok"]:
+        print("VERDICT: FAIL")
+        return 1
+    if expected:
+        print("VERDICT: PASS")
+        return 0
+    if "--no-anchor" in flags:
+        print("VERDICT: INTERNALLY-CONSISTENT (anchor waived on purpose)")
+        return 0
+    print("VERDICT: UNVERIFIED")
+    print("  Every internal check passed, but no expected fingerprint was given, so")
+    print("  this cannot be shown to be the artifact you were promised. A forgery")
+    print("  whose inputs and verdict were edited together would look exactly like")
+    print("  this. Compare the fingerprint above against a value obtained out of")
+    print("  band, or pass --no-anchor to accept the weaker check deliberately.")
+    return 4
 
 
 if __name__ == "__main__":
