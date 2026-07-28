@@ -12,7 +12,6 @@ Exit codes are a taxonomy, so CI can branch on *why* a check failed:
 from __future__ import annotations
 
 import argparse
-import json
 import sys
 
 from . import (INTERNALLY_CONSISTENT, UNVERIFIED, VACUOUS, VERIFIED,
@@ -49,7 +48,13 @@ def main(argv=None) -> int:
                     help="accept the weaker internal-consistency check on purpose")
     ap.add_argument("--allow-empty", action="store_true",
                     help="permit a bundle that certifies nothing")
-    ap.add_argument("--json", action="store_true", help="machine-readable output")
+    ap.add_argument("--json", action="store_true", help="machine-readable output (JSON)")
+    ap.add_argument("--format", choices=["text", "json", "jsonl", "sarif", "junit"],
+                    default=None,
+                    help="output format. sarif renders in GitHub code scanning; "
+                         "junit appears in any CI test report")
+    ap.add_argument("-o", "--output", default=None,
+                    help="write the report to this file instead of stdout")
     ap.add_argument("--scope", action="store_true", help="print what is and is not checked")
     ap.add_argument("--explain", action="store_true",
                     help="show, per locus, which ones prevented admission and by how much")
@@ -68,8 +73,16 @@ def main(argv=None) -> int:
                         require_certs=not a.allow_empty,
                         require_anchor=not a.no_anchor)
 
-    if a.json:
-        print(json.dumps(res, indent=2, sort_keys=True))
+    fmt = a.format or ("json" if a.json else "text")
+    if fmt != "text":
+        from .report import emit
+        out = emit(res, fmt, source=str(a.bundle_dir))
+        if a.output:
+            from pathlib import Path as _P
+            _P(a.output).write_text(out + "\n")
+            print(f"wrote {fmt} report to {a.output}")
+        else:
+            print(out)
         return _exit_code(res)
 
     print(f"bundle fingerprint: sha256:{res['fingerprint']}")

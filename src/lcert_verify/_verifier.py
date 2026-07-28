@@ -400,7 +400,9 @@ def verify_bundle(bundle_dir, expected_sha256: str = "") -> dict:
     errs += verify_gate_certs(bundle)
     errs += verify_resource_floor_certs(bundle)
     errs += verify_image_bound_certs(bundle)
-    return {"ok": not errs, "errors": errs, "fingerprint": fingerprint}
+    # `_parsed` is returned so callers need not parse bundle.json a second time.
+    # It is stripped by the public wrapper and is not part of the result contract.
+    return {"ok": not errs, "errors": errs, "fingerprint": fingerprint, "_parsed": bundle}
 
 
 def main(argv) -> int:

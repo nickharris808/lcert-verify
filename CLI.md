@@ -18,8 +18,31 @@ lcert-verify [BUNDLE_DIR] [EXPECTED_SHA256] [options]
 | `--no-anchor` | Accept the weaker internal-consistency check on purpose. Verdict becomes `INTERNALLY-CONSISTENT`. |
 | `--allow-empty` | Permit a bundle that certifies nothing. |
 | `--explain` | Per-locus breakdown: which loci blocked admission, their margin, the margin needed, and the shortfall. |
-| `--json` | Machine-readable result. |
+| `--json` | Machine-readable result. Equivalent to `--format json`. |
+| `--format FMT` | Output as `text` (default), `json`, `jsonl`, `sarif`, or `junit`. |
+| `-o, --output PATH` | Write the report to a file instead of stdout. |
 | `--scope` | Print exactly what is and is not checked. |
+
+## Output formats
+
+```bash
+lcert-verify bundle/ "$FP" --format sarif --output lcert.sarif
+lcert-verify bundle/ "$FP" --format junit --output results.xml
+```
+
+| Format | Use |
+|---|---|
+| `text` | Human reading. The default. |
+| `json` | One object: verdict, errors, fingerprint, counts. |
+| `jsonl` | One object per line, for log ingestion. |
+| `sarif` | SARIF 2.1.0 — GitHub's Security tab and any code-scanning UI. |
+| `junit` | JUnit XML — appears as a test result in essentially any CI. |
+
+**An abstention is never rendered as a pass.** SARIF and JUnit have no "abstained"
+state, so `UNVERIFIED` is reported as a **failure with the reason attached** rather
+than quietly succeeding — reporting it green would be exactly the confident wrong
+answer this tool exists to avoid. The exit code is unchanged by `--format`: a
+`--format junit` run that abstains still exits `4`.
 
 ## Verdicts
 

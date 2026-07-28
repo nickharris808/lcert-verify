@@ -1,10 +1,45 @@
-# Performance — measured, not optimised
+# Performance — measured, not projected
 
-**Summary: nothing here is slow enough to warrant optimisation, so none was done.**
-Inventing a speedup would be its own form of hallucination, so this file reports what
-was measured and stops.
+**One optimisation has been made, and it is reported below with the before and after
+from an actual run of both versions.** Everything else measured here is fast enough
+that optimising it would be optimising a path nobody walks; inventing a speedup would
+be its own form of hallucination, so the rest of this file reports what was measured
+and stops.
 
 All figures: single-threaded CPython 3.11, Apple Silicon, no warm cache.
+
+## The one optimisation: parse `bundle.json` once, not four times
+
+The hardening pass added three helpers — `_count_certs`, `_count_gated_loci`,
+`_nonfinite_fields` — each of which re-opened and re-parsed the bundle the raw verifier
+had already parsed. Four `json.loads` of a multi-megabyte document per verification.
+
+The fix threads the parsed object through: the helpers now take a dict, and the frozen
+verifier returns the bundle it parsed under a private `_parsed` key that the public
+wrapper strips before returning.
+
+Measured by running **both versions**, each in its own interpreter, over the same
+bundle. Median of 15 reps at 200k loci and 9 at the other sizes:
+
+| Loci | bundle.json | Before | After | Saving | Speedup |
+|---|---|---|---|---|---|
+| 50,000 | 1.4 MB | 81.4 ms | 56.6 ms | 30.5% | 1.44× |
+| 200,000 | 5.5 MB | 322.0 ms | 225.0 ms | 30.1% | 1.43× |
+| 800,000 | 21.9 MB | 1291.9 ms | 895.6 ms | 30.7% | 1.44× |
+
+`json.loads` calls per verification: **4 → 1**, confirmed by instrumenting the module.
+
+**Soundness.** A speedup that changes a verdict is not a speedup. Old and new were run
+over all 12 certificate cases in the atlas, anchored and unanchored — 24 verifications
+— and the full result was compared, not just the headline: verdict, `ok`, the sorted
+error list, and the fingerprint. All 24 identical, including every forgery case.
+
+*A note on the estimate.* This was projected at 27% and first measured at 20%. That
+first measurement was wrong in method: it timed the current code against a *simulation*
+of the old four-parse shape rather than against the old code, on a run with enough
+variance (±25 ms) to swamp the effect. Running the two real versions gives 30%
+consistently across three sizes with a spread under 6 ms. The projection was
+conservative; the low reading was an artefact of measuring the wrong thing.
 
 ## lcert-verify — linear, ~1.3 µs per locus
 
@@ -18,6 +53,10 @@ All figures: single-threaded CPython 3.11, Apple Silicon, no warm cache.
 
 Cost is linear with a flat per-locus constant; the 10-locus figure is fixed overhead
 amortising away. Extrapolating, one million loci is roughly **1.3 s**.
+
+These per-locus figures pre-date the parse-once change above and are therefore
+pessimistic by ~30%; they are left as measured rather than rescaled, because a number
+nobody re-ran is not a measurement.
 
 **Implication for scale.** Full-reticle work is 10⁶–10⁸ loci. At this rate 10⁶ is
 comfortable and 10⁸ would be ~2 minutes single-threaded — usable, and trivially

@@ -21,6 +21,7 @@ from ._verifier import (  # noqa: F401
 from ._verifier import verify_bundle as _verify_bundle_raw
 from .builder import bundle_fingerprint, gate_cert, kappa_for_budget, make_bundle  # noqa: F401
 from .explain import explain_certificate, format_explanation  # noqa: F401
+from .report import emit, to_json, to_jsonl, to_junit, to_sarif  # noqa: F401
 
 
 # Verdict taxonomy. The distinction that matters: VERIFIED is an assertion, and
@@ -58,9 +59,14 @@ def verify_bundle(bundle_dir, expected_sha256: str = "", *,
     """
     res = dict(_verify_bundle_raw(bundle_dir, expected_sha256))
     errors = list(res.get("errors", []))
-    n_certs = _count_certs(bundle_dir)
-    n_loci = _count_gated_loci(bundle_dir)
-    nonfinite = _nonfinite_fields(bundle_dir)
+    # The raw verifier already parsed bundle.json; reuse its object rather than
+    # parsing a multi-megabyte document again. Falls back if it bailed early.
+    parsed = res.pop("_parsed", None)
+    if not isinstance(parsed, dict):
+        parsed = _load_bundle(bundle_dir)
+    n_certs = _count_certs(parsed)
+    n_loci = _count_gated_loci(parsed)
+    nonfinite = _nonfinite_fields(parsed)
 
     res["n_certificates"] = n_certs
     res["n_gated_loci"] = n_loci
@@ -104,6 +110,12 @@ def verify_bundle(bundle_dir, expected_sha256: str = "", *,
 
 
 def _load_bundle(bundle_dir):
+    """Parse bundle.json once. Returns None if absent, unparseable, or not an object.
+
+    Callers should parse ONCE and pass the result to the helpers below; each of
+    them used to re-read and re-parse the file, which cost four full parses of a
+    multi-megabyte document per verification.
+    """
     import json
     from pathlib import Path
     try:
@@ -115,19 +127,17 @@ def _load_bundle(bundle_dir):
     return b if isinstance(b, dict) else None
 
 
-def _count_certs(bundle_dir) -> int:
-    """Count certificates of every kind carried by a bundle (0 if unreadable)."""
-    b = _load_bundle(bundle_dir)
-    if b is None:
+def _count_certs(b) -> int:
+    """Count certificates of every kind in an already-parsed bundle."""
+    if not isinstance(b, dict):
         return 0
     return sum(len(b.get(k) or []) for k in
                ("gate_certs", "image_bound_certs", "resource_floor_certs"))
 
 
-def _count_gated_loci(bundle_dir) -> int:
+def _count_gated_loci(b) -> int:
     """Total loci carrying a proof obligation. Zero means nothing had to be proven."""
-    b = _load_bundle(bundle_dir)
-    if b is None:
+    if not isinstance(b, dict):
         return 0
     n = 0
     for c in b.get("gate_certs") or []:
@@ -136,11 +146,10 @@ def _count_gated_loci(bundle_dir) -> int:
     return n
 
 
-def _nonfinite_fields(bundle_dir):
+def _nonfinite_fields(b):
     """Names of numeric fields holding NaN/Infinity, which are not valid JSON."""
     import math
-    b = _load_bundle(bundle_dir)
-    if b is None:
+    if not isinstance(b, dict):
         return []
     bad = []
     for i, c in enumerate(b.get("gate_certs") or []):
@@ -161,5 +170,6 @@ __all__ = [
     "verify_manifest_and_root", "rederive_gate_verdict", "check_kappa_K",
     "derive_master_salt", "derive_tile_salts", "leaf_hash", "merkle_root",
     "outputs_commitment", "make_bundle", "gate_cert", "kappa_for_budget",
-    "bundle_fingerprint", "explain_certificate", "format_explanation", "__version__",
+    "bundle_fingerprint", "explain_certificate", "format_explanation",
+    "emit", "to_json", "to_jsonl", "to_sarif", "to_junit", "__version__",
 ]

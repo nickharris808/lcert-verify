@@ -250,3 +250,57 @@ def test_cli_exit_codes_are_distinct(tmp_path):
     L.make_bundle(tmp_path / "empty", gate_certs=[], kpis=[], prereg={})
     assert _cli([str(tmp_path / "empty"),
                  L.bundle_fingerprint(tmp_path / "empty")]).returncode == 3   # vacuous
+
+
+# ---------------------------------------------------------------- P1: parse once
+# verify_bundle used to parse bundle.json four times (once in the raw verifier, then
+# again in each of three helpers). These pin the fix and the result contract.
+
+def test_bundle_is_parsed_exactly_once(tmp_path):
+    import json as _json
+    d = _bundle(SAFE, tmp_path)
+    fp = L.bundle_fingerprint(d)
+    calls = {"n": 0}
+    orig = _json.loads
+
+    def counting(*a, **k):
+        calls["n"] += 1
+        return orig(*a, **k)
+
+    _json.loads = counting
+    try:
+        L.verify_bundle(d, fp)
+    finally:
+        _json.loads = orig
+    assert calls["n"] == 1, f"bundle.json parsed {calls['n']} times, expected 1"
+
+
+def test_internal_parsed_key_does_not_leak_into_the_result(tmp_path):
+    """`_parsed` is an internal handoff, not part of the public contract."""
+    d = _bundle(SAFE, tmp_path)
+    res = L.verify_bundle(d, L.bundle_fingerprint(d))
+    assert "_parsed" not in res
+
+
+def test_verdicts_are_unchanged_by_the_parse_optimisation(tmp_path):
+    """Golden vectors: every verdict class must be byte-identical to pre-optimisation."""
+    cases = [
+        (SAFE, True, "VERIFIED"),
+        (STRADDLE, True, "VERIFIED"),        # honest REJECT recorded, still verifies
+        ([], True, "VERIFIED-VACUOUS"),
+    ]
+    for loci, anchored, expect in cases:
+        d = _bundle(loci, tmp_path / f"g{expect}{len(loci)}")
+        fp = L.bundle_fingerprint(d) if anchored else ""
+        assert L.verify_bundle(d, fp)["verdict"] == expect, (loci, expect)
+
+
+def test_helpers_accept_a_parsed_bundle_not_a_path(tmp_path):
+    """The helper signature changed; a stale caller passing a path must not silently
+    return 0 and make a bundle look vacuous."""
+    d = _bundle(SAFE, tmp_path)
+    parsed = L._load_bundle(d)
+    assert L._count_certs(parsed) == 1
+    assert L._count_gated_loci(parsed) == 2
+    assert L._count_certs(str(d)) == 0        # a path is not a dict -> 0, and callers
+    assert L._count_gated_loci(str(d)) == 0   # are inside this package only
