@@ -57,3 +57,13 @@ def _count_certs(bundle_dir) -> int:
         return 0
     return sum(len(b.get(k) or []) for k in
                ("gate_certs", "image_bound_certs", "resource_floor_certs"))
+
+
+__version__ = "1.0.0"
+__all__ = [
+    "FORMAT", "SCOPE", "verify_bundle", "verify_gate_certs", "verify_kpis",
+    "verify_manifest_and_root", "rederive_gate_verdict", "check_kappa_K",
+    "derive_master_salt", "derive_tile_salts", "leaf_hash", "merkle_root",
+    "outputs_commitment", "make_bundle", "gate_cert", "kappa_for_budget",
+    "bundle_fingerprint", "__version__",
+]

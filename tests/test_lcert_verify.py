@@ -247,3 +247,11 @@ def test_cli_reports_count_and_refuses_empty(tmp_path, capsys):
     out = capsys.readouterr().out
     assert "certificates checked: 0" in out and "VERDICT: FAIL" in out
     assert cli_main([str(tmp_path), "--allow-empty"]) == 0
+
+
+def test_package_exposes_version_and_all():
+    """Regression: an earlier edit truncated __init__.py and silently dropped both."""
+    assert L.__version__ == "1.0.0"
+    assert "verify_bundle" in L.__all__
+    for name in L.__all__:
+        assert hasattr(L, name), f"__all__ advertises {name} but it is not exported"
