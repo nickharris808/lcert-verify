@@ -96,6 +96,13 @@ a pure-Python re-derivation is bit-identical to the producer's — on any platfo
 verifier can be a few hundred lines and still be exact.
 
 
+## Documentation
+
+- **[TUTORIAL.md](TUTORIAL.md)** — fifteen minutes, produce → transport → verify → watch a forgery get caught
+- **[CLI.md](CLI.md)** — every flag, verdict and exit code
+- **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** — the errors you will actually hit, with fixes
+- **[PERFORMANCE.md](PERFORMANCE.md)** — measured throughput (~1.3 µs/locus, linear)
+
 ## Honest scope — what this proves, and what it does not
 
 | Question | Answer |

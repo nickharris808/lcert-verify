@@ -20,6 +20,7 @@ from ._verifier import (  # noqa: F401
 )
 from ._verifier import verify_bundle as _verify_bundle_raw
 from .builder import bundle_fingerprint, gate_cert, kappa_for_budget, make_bundle  # noqa: F401
+from .explain import explain_certificate, format_explanation  # noqa: F401
 
 
 # Verdict taxonomy. The distinction that matters: VERIFIED is an assertion, and
@@ -160,5 +161,5 @@ __all__ = [
     "verify_manifest_and_root", "rederive_gate_verdict", "check_kappa_K",
     "derive_master_salt", "derive_tile_salts", "leaf_hash", "merkle_root",
     "outputs_commitment", "make_bundle", "gate_cert", "kappa_for_budget",
-    "bundle_fingerprint", "__version__",
+    "bundle_fingerprint", "explain_certificate", "format_explanation", "__version__",
 ]

@@ -51,6 +51,8 @@ def main(argv=None) -> int:
                     help="permit a bundle that certifies nothing")
     ap.add_argument("--json", action="store_true", help="machine-readable output")
     ap.add_argument("--scope", action="store_true", help="print what is and is not checked")
+    ap.add_argument("--explain", action="store_true",
+                    help="show, per locus, which ones prevented admission and by how much")
 
     a = ap.parse_args(argv if argv is not None else sys.argv[1:])
 
@@ -76,6 +78,19 @@ def main(argv=None) -> int:
           f"(gated loci: {res['n_gated_loci']})")
     for e in res["errors"]:
         print(f"  - {e}")
+    if a.explain:
+        import json as _json
+        from pathlib import Path as _Path
+        from .explain import explain_certificate, format_explanation
+        try:
+            b = _json.loads((_Path(a.bundle_dir) / "bundle.json").read_text())
+        except Exception:
+            b = None
+        for cert in (b or {}).get("gate_certs", []):
+            print()
+            print(format_explanation(explain_certificate(cert)))
+        print()
+
     print(f"VERDICT: {res['verdict']}")
     if res["verdict"] == UNVERIFIED:
         print("         (abstained — this is NOT a failure of the certificate, it is a "
