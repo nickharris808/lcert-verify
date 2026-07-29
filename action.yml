@@ -1,0 +1,102 @@
+name: lcert-verify
+description: >-
+  Re-derive a certificate bundle's verdict in CI. Abstains rather than asserting
+  when the trust anchor is absent, and never reports an abstention as a pass.
+author: nickharris808
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  bundle:
+    description: Path to the bundle directory.
+    required: true
+  anchor:
+    description: >-
+      The bundle fingerprint, obtained OUT OF BAND. Without it the action
+      abstains and fails — which is the point. Put it in a repository variable,
+      not next to the bundle.
+    required: false
+    default: ""
+  allow-abstain:
+    description: >-
+      Treat UNVERIFIED as a pass. Off by default and it should stay off: an
+      abstention means nothing was established.
+    required: false
+    default: "false"
+  sarif:
+    description: Write a SARIF file here, for the Security tab.
+    required: false
+    default: ""
+  python-version:
+    required: false
+    default: "3.12"
+  ref:
+    description: Version of lcert-verify to install.
+    required: false
+    default: main
+
+outputs:
+  verdict:
+    description: VERIFIED · VERIFIED-VACUOUS · INTERNALLY-CONSISTENT · UNVERIFIED · VACUOUS · REFUTED
+    value: ${{ steps.verify.outputs.verdict }}
+  fingerprint:
+    description: SHA-256 of bundle.json — compare it against your out-of-band value.
+    value: ${{ steps.verify.outputs.fingerprint }}
+  gated-loci:
+    description: Loci that carried a proof obligation. Zero means nothing had to be earned.
+    value: ${{ steps.verify.outputs.gated-loci }}
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-python@v5
+      with:
+        python-version: ${{ inputs.python-version }}
+
+    - name: Install
+      shell: bash
+      run: pip install --quiet "lcert-verify @ git+https://github.com/nickharris808/lcert-verify.git@${{ inputs.ref }}"
+
+    - name: Verify
+      id: verify
+      shell: bash
+      env:
+        LV_BUNDLE: ${{ inputs.bundle }}
+        LV_ANCHOR: ${{ inputs.anchor }}
+        LV_ALLOW: ${{ inputs.allow-abstain }}
+        LV_SARIF: ${{ inputs.sarif }}
+      run: |
+        set -uo pipefail
+        rc=0
+        lcert-verify "$LV_BUNDLE" $LV_ANCHOR --format json > result.json || rc=$?
+        python - <<'PY' >> "$GITHUB_OUTPUT"
+        import json, os
+        r = json.load(open("result.json"))
+        print(f"verdict={r['verdict']}")
+        print(f"fingerprint={r.get('fingerprint','')}")
+        print(f"gated-loci={r.get('n_gated_loci', 0)}")
+        PY
+
+        if [ -n "$LV_SARIF" ]; then
+          lcert-verify "$LV_BUNDLE" $LV_ANCHOR --format sarif -o "$LV_SARIF" || true
+        fi
+
+        {
+          echo "## lcert-verify"
+          echo
+          lcert-verify "$LV_BUNDLE" $LV_ANCHOR 2>&1 | sed 's/^/    /'
+        } >> "$GITHUB_STEP_SUMMARY" || true
+
+        # Exit codes: 0 ok · 1 verdict · 2 integrity · 3 vacuous · 4 unanchored · 5 usage.
+        # 4 is an ABSTENTION. It is a failure here by default because nothing was
+        # established, and a green check on that would be the confident wrong
+        # answer this tool exists to prevent.
+        if [ "$rc" -eq 4 ] && [ "$LV_ALLOW" = "true" ]; then
+          echo "::warning::lcert-verify abstained (no trust anchor). Allowed by allow-abstain."
+          exit 0
+        fi
+        if [ "$rc" -eq 4 ]; then
+          echo "::error::lcert-verify ABSTAINED — no trust anchor was supplied, so nothing was established. Supply the out-of-band fingerprint via the 'anchor' input."
+        fi
+        exit "$rc"

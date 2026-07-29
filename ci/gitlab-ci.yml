@@ -1,0 +1,19 @@
+# GitLab CI. Copy into .gitlab-ci.yml, or include it.
+#
+# The anchor is a masked CI variable, deliberately NOT stored beside the bundle:
+# a bundle that carries its own anchor proves nothing.
+
+verify-certificate:
+  image: python:3.12-slim
+  variables:
+    BUNDLE: certs/my-bundle
+  before_script:
+    - pip install --quiet "lcert-verify @ git+https://github.com/nickharris808/lcert-verify.git@main"
+  script:
+    # Exit codes: 0 ok · 1 verdict · 2 integrity · 3 vacuous · 4 unanchored · 5 usage.
+    # 4 is an abstention and fails the job, because nothing was established.
+    - lcert-verify "$BUNDLE" "$LCERT_ANCHOR" --format junit -o report.xml
+  artifacts:
+    when: always
+    reports:
+      junit: report.xml

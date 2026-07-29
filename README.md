@@ -155,6 +155,62 @@ a locus exactly on the threshold and one a single ULP inside it.
 To produce bundles ergonomically — preregistration, evidence files, self-verification on write —
 see **[lcert-build](https://github.com/nickharris808/lcert-build)**.
 
+
+## Run it as a service
+
+Some teams will not add a Python dependency to a signoff flow but will call an endpoint.
+
+```bash
+lcert-verify serve                      # loopback, no dependencies
+docker run --rm -p 8080:8080 lcert-verify
+curl -H "X-LCERT-Anchor: $ANCHOR" -H 'Content-Type: application/zip' \
+     --data-binary @bundle.zip http://localhost:8080/verify
+```
+
+**The status code carries the verdict, so a naive caller cannot misread it.** A service that
+returned `200` with `{"verdict": "UNVERIFIED"}` would let `if response.ok:` treat an abstention as
+a pass — the exact failure this project exists to prevent, in HTTP form.
+
+| Verdict | Status |
+|---|---|
+| `VERIFIED` · `VERIFIED-VACUOUS` · `INTERNALLY-CONSISTENT` | `200` |
+| `UNVERIFIED` | **`428 Precondition Required`** — the anchor is a missing precondition, not a failure of the bundle |
+| `REFUTED` · `VACUOUS` | `422 Unprocessable Content` |
+| too large · malformed | `413` · `400` — not a verdict at all |
+
+The image is 47 MB, runs as a non-root user, drops all capabilities and mounts its root
+filesystem read-only ([`compose.yaml`](compose.yaml)). It logs the verdict and never the payload:
+bundles can be confidential and this is meant to drop into an internal network.
+
+## Run it in CI
+
+```yaml
+- uses: nickharris808/lcert-verify@main
+  with:
+    bundle: certs/my-bundle
+    anchor: ${{ vars.LCERT_ANCHOR }}
+    sarif: lcert.sarif
+```
+
+Outputs `verdict`, `fingerprint` and `gated-loci`. **An abstention fails the build by default** —
+`allow-abstain` exists and should stay off. There are also [pre-commit hooks](.pre-commit-hooks.yaml)
+and [GitLab and Jenkins snippets](ci/README.md). The anchor belongs in a repository variable, not
+beside the bundle: a bundle carrying its own fingerprint proves nothing.
+
+## Bundles too large to hold in memory
+
+```bash
+lcert-verify big/ "$ANCHOR" --stream
+```
+
+Verifies one certificate at a time. On a 22 MB bundle of 100 certificates: **214 MB → 69 MB**
+resident, and 899 ms → 548 ms, because it never builds the whole document. On a bundle that is one
+enormous certificate it saves only 23% — nothing can stream *inside* a certificate, and
+[PERFORMANCE.md](PERFORMANCE.md) says so rather than quoting the flattering row.
+
+It needs the anchor: streaming cannot do the canonical round-trip check, so without a fingerprint
+it abstains. With one, byte identity is established exactly, which is strictly stronger.
+
 ## Honest scope — what this proves, and what it does not
 
 | Question | Answer |

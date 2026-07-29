@@ -66,3 +66,75 @@ jobs:
           rc=0
           python -I -S src/lcert_verify/_verifier.py ci_bundle || rc=$?
           test "$rc" -eq 4
+
+  action:
+    name: the reusable action passes anchored and fails abstaining
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Build a bundle to verify
+        id: fixture
+        run: |
+          pip install -e .
+          python - <<'PY' >> "$GITHUB_OUTPUT"
+          import lcert_verify as L
+          c = L.interval_bound_cert("ci", quantity="q", unit="u", threshold=1.0,
+                                    direction="below", loci=[(0.0, 0.5)])
+          L.make_bundle("ci_bundle", interval_bound_certs=[c], kpis=[], prereg={"ci": True})
+          print("anchor=" + L.bundle_fingerprint("ci_bundle"))
+          PY
+
+      - name: Anchored — must pass
+        id: anchored
+        uses: ./
+        with:
+          bundle: ci_bundle
+          anchor: ${{ steps.fixture.outputs.anchor }}
+      - run: |
+          test "${{ steps.anchored.outputs.verdict }}" = "VERIFIED"
+          test "${{ steps.anchored.outputs.gated-loci }}" = "1"
+
+      - name: Unanchored — must NOT pass
+        id: unanchored
+        uses: ./
+        continue-on-error: true
+        with:
+          bundle: ci_bundle
+      - name: An abstention is a failure, not a green check
+        run: |
+          test "${{ steps.unanchored.outcome }}" = "failure"
+          test "${{ steps.unanchored.outputs.verdict }}" = "UNVERIFIED"
+
+  serve:
+    name: the service answers, and abstains with 428
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[test]"
+      - run: pytest -q tests/test_serve.py tests/test_stream.py
+
+  docker:
+    name: the image builds and serves
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t lcert-verify:ci .
+      - name: Serve, and check an abstention is not a 200
+        run: |
+          set -e
+          docker run -d --rm -p 8080:8080 --name lv lcert-verify:ci
+          for i in $(seq 1 30); do
+            curl -sf http://127.0.0.1:8080/health >/dev/null && break || sleep 1
+          done
+          curl -sf http://127.0.0.1:8080/health
+          code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
+                 -H 'Content-Type: application/json' --data '{}' \
+                 http://127.0.0.1:8080/verify)
+          test "$code" -ge 400
+          docker stop lv

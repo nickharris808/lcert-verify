@@ -304,3 +304,29 @@ def test_helpers_accept_a_parsed_bundle_not_a_path(tmp_path):
     assert L._count_gated_loci(parsed) == 2
     assert L._count_certs(str(d)) == 0        # a path is not a dict -> 0, and callers
     assert L._count_gated_loci(str(d)) == 0   # are inside this package only
+
+
+def test_a_deeply_nested_bundle_is_rejected_not_crashed(tmp_path):
+    """A hostile document must be a verdict, never an exception.
+
+    This shipped broken: `json.loads` raises `RecursionError` on deep nesting,
+    which is not a `ValueError`, so it escaped the parse guard and took the
+    process down. A checker that crashes on hostile input is a denial of service
+    and tells the caller nothing.
+    """
+    (tmp_path / "bundle.json").write_bytes(b'{"a": ' + b"[" * 5000 + b"]" * 5000 + b"}")
+    res = L.verify_bundle(tmp_path, "ab" * 32)
+    assert res["verdict"] == "REFUTED"
+    assert any("too deeply" in e for e in res["errors"])
+
+
+def test_the_standalone_file_rejects_deep_nesting_too(tmp_path):
+    import subprocess
+    import sys
+    from pathlib import Path
+    (tmp_path / "bundle.json").write_bytes(b'{"a": ' + b"[" * 5000 + b"]" * 5000 + b"}")
+    standalone = Path(L.__file__).parent / "_verifier.py"
+    out = subprocess.run([sys.executable, "-I", "-S", str(standalone), str(tmp_path),
+                          "ab" * 32], capture_output=True, text=True)
+    assert out.returncode == 1, out.stdout + out.stderr
+    assert "Traceback" not in out.stderr

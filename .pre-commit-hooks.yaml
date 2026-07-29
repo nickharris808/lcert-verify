@@ -1,0 +1,29 @@
+# Run the verifier as a pre-commit hook, so a bundle cannot be committed unverified.
+#
+#   repos:
+#     - repo: https://github.com/nickharris808/lcert-verify
+#       rev: main
+#       hooks:
+#         - id: lcert-verify
+#           args: [certs/my-bundle, --no-anchor]
+#
+# Note on --no-anchor: a hook has nowhere to get an out-of-band fingerprint, so
+# without it the hook abstains and fails every time. Passing --no-anchor asks
+# deliberately for the weaker internal-consistency check, and the verdict says
+# INTERNALLY-CONSISTENT rather than VERIFIED. That is the honest arrangement for
+# a pre-commit hook; the anchored check belongs in CI.
+- id: lcert-verify
+  name: lcert-verify (re-derive a certificate's verdict)
+  description: Re-derives the recorded verdict from the certificate's own numbers.
+  entry: lcert-verify
+  language: python
+  files: (^|/)bundle\.json$
+  pass_filenames: false
+
+- id: lcert-verify-scope
+  name: lcert-verify --scope (print what is and is not checked)
+  entry: lcert-verify --scope
+  language: python
+  always_run: true
+  pass_filenames: false
+  stages: [manual]

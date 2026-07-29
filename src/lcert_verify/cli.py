@@ -40,7 +40,8 @@ def main(argv=None) -> int:
     ap = argparse.ArgumentParser(
         prog="lcert-verify",
         description="Re-derive an LCERT-1 certificate's verdict. Abstains rather than "
-                    "asserting when a trust anchor is absent.")
+                    "asserting when a trust anchor is absent.",
+        epilog="`lcert-verify serve --help` runs it as an HTTP service instead.")
     ap.add_argument("bundle_dir", nargs="?")
     ap.add_argument("expected_sha256", nargs="?", default="",
                     help="bundle fingerprint obtained OUT OF BAND — the trust anchor")
@@ -62,11 +63,19 @@ def main(argv=None) -> int:
                     help="trust anchor for the bundle given to --diff")
     ap.add_argument("-o", "--output", default=None,
                     help="write the report to this file instead of stdout")
+    ap.add_argument("--stream", action="store_true",
+                    help="verify one certificate at a time, for bundles too large "
+                         "to hold in memory. Needs the anchor; gives the same verdict")
     ap.add_argument("--scope", action="store_true", help="print what is and is not checked")
     ap.add_argument("--explain", action="store_true",
                     help="show, per locus, which ones prevented admission and by how much")
 
-    a = ap.parse_args(argv if argv is not None else sys.argv[1:])
+    argv = list(sys.argv[1:] if argv is None else argv)
+    if argv and argv[0] == "serve":
+        from .serve import main as serve_main
+        return serve_main(argv[1:])
+
+    a = ap.parse_args(argv)
 
     if a.scope:
         print(SCOPE)
@@ -89,9 +98,15 @@ def main(argv=None) -> int:
         # something got worse, so it is usable as a regression gate.
         return 1 if d["n_regressed"] else EXIT_OK
 
-    res = verify_bundle(a.bundle_dir, a.expected_sha256,
-                        require_certs=not a.allow_empty,
-                        require_anchor=not a.no_anchor)
+    if a.stream:
+        from .stream import verify_bundle_streaming
+        res = verify_bundle_streaming(a.bundle_dir, a.expected_sha256,
+                                      require_certs=not a.allow_empty,
+                                      require_anchor=not a.no_anchor)
+    else:
+        res = verify_bundle(a.bundle_dir, a.expected_sha256,
+                            require_certs=not a.allow_empty,
+                            require_anchor=not a.no_anchor)
 
     fmt = a.format or ("json" if a.json else "text")
     if fmt == "html":

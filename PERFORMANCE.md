@@ -63,6 +63,60 @@ comfortable and 10⁸ would be ~2 minutes single-threaded — usable, and trivia
 parallel across tiles since each certificate verifies independently. No optimisation is
 needed for any size we can currently measure.
 
+
+## Streaming — and the memory ceiling it does and does not lift
+
+`verify_bundle` parses the whole document, so peak memory runs about **9x the file size**: an
+800,000-locus bundle is 22 MB on disk and 210 MB resident. `--stream` walks the document with the
+standard library's incremental decoder and verifies one certificate at a time.
+
+Same 22 MB and the same 800,000 loci, differing only in how they are grouped:
+
+| Shape | Ordinary | Streaming | Saving | Ordinary | Streaming |
+|---|---|---|---|---|---|
+| 100 certificates x 8,000 loci | 214 MB | **69 MB** | 67% | 899 ms | **548 ms** |
+| 1 certificate x 800,000 loci | 213 MB | 164 MB | 23% | 895 ms | **549 ms** |
+| 200,000 loci | 73 MB | 58 MB | 20% | 224 ms | **137 ms** |
+
+The second row is the honest limit: nothing can stream *inside* one certificate, because its loci
+arrays have to exist before they can be checked. If your bundles are one enormous certificate this
+buys little, and the fix is to split the certificate — which the format has always allowed.
+
+It is also **faster**, which was not the goal. It never builds the whole document, so it does less
+work. An earlier version scanned bytes by hand to find value boundaries; it was correct and four
+times *slower*, because a 22 MB byte-at-a-time Python loop costs more than the parse it avoided.
+`JSONDecoder.raw_decode` does the same job in C.
+
+`test_streaming_agrees_with_the_ordinary_path` compares the whole result — verdict, errors,
+fingerprint, counts — across bundle shapes, forgeries and malformed input.
+
+## Parallel verification — measured, and not built
+
+The plan called for `--jobs` over a process pool, targeting 6x on 8 cores. It was measured first,
+and the measurement said no.
+
+Over a 320,000-locus bundle in 64 certificates:
+
+| | |
+|---|---|
+| serial verify | 371 ms |
+| of which parsing | 62 ms (17%) |
+| of which certificate checking (the parallel part) | 179 ms (48%) |
+| **Amdahl ceiling at 14 cores** | **1.81x** |
+
+And a process pool does not reach the ceiling — it goes backwards, because the certificates have
+to be pickled to the workers:
+
+| workers | certificate checking |
+|---|---|
+| serial | 169 ms |
+| 4 | 289 ms (**0.59x**) |
+| 8 | 202 ms (0.84x) |
+| 14 | 270 ms (0.63x) |
+
+So it is not implemented. Streaming already delivered a 1.6x speedup for free by doing less work
+rather than doing it in more places.
+
 ## equiv-receipt — watched literals, and the checker that could not read real proofs
 
 Two things were wrong with the DRAT checker, and only one of them was speed.

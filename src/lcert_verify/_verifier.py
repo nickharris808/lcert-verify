@@ -466,6 +466,13 @@ def verify_bundle(bundle_dir, expected_sha256: str = "") -> dict:
         bundle = json.loads(raw)
     except ValueError:
         return {"ok": False, "errors": ["bundle.json is not valid JSON"], "fingerprint": fingerprint}
+    except RecursionError:
+        # A deeply nested document exhausts the parser's stack. Letting that
+        # propagate turns a hostile file into a crash, which is a denial of
+        # service and not a verdict. It is a rejection: nothing was established.
+        return {"ok": False, "fingerprint": fingerprint, "errors": [
+            "bundle.json is nested too deeply to parse — rejected rather than "
+            "crashed, but nothing about it was established"]}
     if not isinstance(bundle, dict):
         # Valid JSON, wrong shape. Crashing on hostile input is a denial of service
         # and an unhelpful failure; reject cleanly instead.

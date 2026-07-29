@@ -1,0 +1,11 @@
+# Drop-in for an internal network. Nothing is written, nothing is fetched.
+services:
+  lcert-verify:
+    build: .
+    image: lcert-verify:latest
+    ports: ["8080:8080"]
+    read_only: true                  # it writes only to the tmpfs below
+    tmpfs: ["/tmp:size=512m"]
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    restart: unless-stopped

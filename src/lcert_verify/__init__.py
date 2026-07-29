@@ -31,6 +31,7 @@ from .diff import diff_bundles, format_diff  # noqa: F401
 from .explain import explain_certificate, format_explanation  # noqa: F401
 from .html import to_html  # noqa: F401
 from .report import emit, to_json, to_jsonl, to_junit, to_sarif  # noqa: F401
+from .stream import verify_bundle_streaming  # noqa: F401
 
 
 # Verdict taxonomy. The distinction that matters: VERIFIED is an assertion, and
@@ -186,5 +187,5 @@ __all__ = [
     "outputs_commitment", "make_bundle", "gate_cert", "kappa_for_budget",
     "bundle_fingerprint", "explain_certificate", "format_explanation",
     "emit", "to_json", "to_jsonl", "to_sarif", "to_junit", "to_html",
-    "diff_bundles", "format_diff", "__version__",
+    "diff_bundles", "format_diff", "verify_bundle_streaming", "__version__",
 ]
