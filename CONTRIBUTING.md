@@ -1,33 +1,33 @@
-# Contributing
+# Contributing to lcert-verify
 
-This package is a **verifier**. Its value comes from being small enough that a
-skeptical reader can audit it in an afternoon, so contributions are held to an
-unusual constraint:
+This package is part of [certified-oss][p]. **The portfolio-wide guide is
+[CONTRIBUTING.md][c] and it is the one to read** — it covers the rules that are not negotiable,
+how to install packages that depend on each other, and what kind of contribution is most wanted
+(a forgery this project fails to catch).
 
-## The rules
+What is specific to this package:
 
-1. **Standard library only, forever.** No dependency may be added to
-   `lcert_verify._verifier`. Not numpy, not cryptography, not anything. If a
-   change requires a dependency, it belongs in a different package.
-2. **The verifier never trusts a recorded value.** If a field can be
-   re-derived from more primitive fields, it must be. A patch that reads a
-   verdict instead of recomputing it will be declined.
-3. **Every new check needs a tamper test.** Show the check failing on a
-   deliberately corrupted bundle. A check with no failing case is decoration.
-4. **Scope honesty.** If a change alters what is and is not verified, update
-   `SCOPE` in the same commit.
+- **`src/lcert_verify/_verifier.py` is frozen.** It is one stdlib file, small enough to read in
+  full, and CI runs it under `python -I -S` with no site-packages. New capability goes in a new
+  module that calls into it — `stream.py`, `diff.py`, `html.py`, `serve.py` all do. A third-party
+  import is a test failure, checked against `sys.stdlib_module_names`.
+- **`CLI.md` is partly generated.** Run `python gen_cli_docs.py` after changing an argument; the
+  prose around the markers is hand-written and yours to edit.
+- **Judging is never reimplemented.** Streaming, HTTP and the JS port all call the same
+  `verify_*_certs` functions. What may differ is how a certificate is reached, never how it is
+  judged.
 
-## Running the tests
+## Working on it
 
-```
+```bash
 pip install -e ".[test]"
-pytest
+pytest -q
+ruff check .
 ```
 
-The suite must pass, and `test_runs_isolated_with_no_site_packages` must pass in
-particular — it is what proves the "no install, no dependencies" claim.
+## Licence
 
-## Reporting a soundness bug
+Apache-2.0. By contributing you agree your contribution is licensed the same way.
 
-A bundle that verifies but should not is the most serious class of bug here.
-Please include the bundle directory and the expected verdict.
+[p]: https://github.com/nickharris808/certified-oss
+[c]: https://github.com/nickharris808/certified-oss/blob/main/CONTRIBUTING.md

@@ -141,22 +141,35 @@ def _count_certs(b) -> int:
     """Count certificates of every kind in an already-parsed bundle."""
     if not isinstance(b, dict):
         return 0
-    return sum(len(b.get(k) or []) for k in
-               ("gate_certs", "image_bound_certs", "resource_floor_certs",
-                "interval_bound_certs"))
+    total = 0
+    for k in ("gate_certs", "image_bound_certs", "resource_floor_certs",
+              "interval_bound_certs"):
+        entries = b.get(k)
+        if isinstance(entries, list):
+            total += len(entries)
+    return total
 
 
 def _count_gated_loci(b) -> int:
-    """Total loci carrying a proof obligation. Zero means nothing had to be proven."""
+    """Total loci carrying a proof obligation. Zero means nothing had to be proven.
+
+    An entry that is not an object is not a certificate and contributes nothing.
+    It is *reported* by the verifier, which is where a malformed entry belongs;
+    counting must not be the thing that raises on it.
+    """
     if not isinstance(b, dict):
         return 0
     n = 0
-    for c in b.get("gate_certs") or []:
-        loci = c.get("loci") or {}
-        n += len(loci.get("ae0") or [])
-    for c in b.get("interval_bound_certs") or []:
-        loci = c.get("loci") or {}
-        n += len(loci.get("lo") or [])
+    for key, lk in (("gate_certs", "ae0"), ("interval_bound_certs", "lo")):
+        entries = b.get(key)
+        if not isinstance(entries, list):
+            continue
+        for c in entries:
+            if not isinstance(c, dict):
+                continue
+            loci = c.get("loci")
+            if isinstance(loci, dict) and isinstance(loci.get(lk), list):
+                n += len(loci[lk])
     return n
 
 
@@ -166,15 +179,22 @@ def _nonfinite_fields(b):
     if not isinstance(b, dict):
         return []
     bad = []
-    for i, c in enumerate(b.get("gate_certs") or []):
+    entries = b.get("gate_certs")
+    if not isinstance(entries, list):
+        return bad
+    for i, c in enumerate(entries):
+        if not isinstance(c, dict):
+            continue                      # reported by the verifier, not counted here
         for k in ("budget", "safety", "n_photons", "kappa", "K", "thr", "delta_dose"):
             v = c.get(k)
             if isinstance(v, float) and not math.isfinite(v):
                 bad.append(f"gate_certs[{i}].{k}")
-        for k, vals in (c.get("loci") or {}).items():
-            if isinstance(vals, list) and any(
-                    isinstance(v, float) and not math.isfinite(v) for v in vals):
-                bad.append(f"gate_certs[{i}].loci.{k}")
+        loci = c.get("loci")
+        if isinstance(loci, dict):
+            for k, vals in loci.items():
+                if isinstance(vals, list) and any(
+                        isinstance(v, float) and not math.isfinite(v) for v in vals):
+                    bad.append(f"gate_certs[{i}].loci.{k}")
     return bad
 
 

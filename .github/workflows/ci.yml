@@ -138,3 +138,17 @@ jobs:
                  http://127.0.0.1:8080/verify)
           test "$code" -ge 400
           docker stop lv
+
+  docs:
+    name: docs are current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[test]"
+      # CLI.md is generated from the parser. A stale one is a wrong claim about
+      # the interface, so it fails here rather than misleading a reader.
+      - run: python gen_cli_docs.py lcert-verify --single lcert-verify --check
+      - run: pytest -q tests/test_docs.py

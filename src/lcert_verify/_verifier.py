@@ -153,14 +153,44 @@ def rederive_gate_verdict(cert: dict) -> dict:
             "n_certainly_safe": n_safe, "n_certainly_unsafe": n_unsafe, "n_straddle": n_straddle}
 
 
+def _certificates(bundle: dict, key: str):
+    """Yield ``(index, certificate)`` for every well-formed entry under ``key``.
+
+    A certificate that is not an object is not a certificate. Reaching for
+    ``.get`` on an integer took the whole process down, which is a denial of
+    service and tells the caller nothing; it is reported as a malformed entry
+    instead. Returns the errors alongside, so nothing is silently skipped.
+    """
+    errs, out = [], []
+    entries = bundle.get(key)
+    if entries is None:
+        return out, errs
+    if not isinstance(entries, list):
+        return out, [f"{key} must be a list, got {type(entries).__name__}"]
+    for i, cert in enumerate(entries):
+        if isinstance(cert, dict):
+            out.append(cert)
+        else:
+            errs.append(f"{key}[{i}] is not a certificate object "
+                        f"(got {type(cert).__name__})")
+    return out, errs
+
+
 def verify_gate_certs(bundle: dict) -> list:
-    errs = []
-    for cert in bundle.get("gate_certs", []):
+    certs, errs = _certificates(bundle, "gate_certs")
+    for cert in certs:
         name = cert.get("name", "?")
-        errs += [f"[{name}] {e}" for e in check_kappa_K(
-            float(cert["budget"]), float(cert["safety"]), float(cert["n_photons"]),
-            float(cert["kappa"]), float(cert["K"]))]
-        red = rederive_gate_verdict(cert)
+        try:
+            errs += [f"[{name}] {e}" for e in check_kappa_K(
+                float(cert["budget"]), float(cert["safety"]), float(cert["n_photons"]),
+                float(cert["kappa"]), float(cert["K"]))]
+            red = rederive_gate_verdict(cert)
+        except (KeyError, IndexError, TypeError, ValueError, OverflowError) as exc:
+            # A certificate missing a field, or carrying the wrong type in one,
+            # cannot be re-derived. That is a rejection with a located reason,
+            # never an exception out of the verifier.
+            errs.append(f"[{name}] malformed certificate: {type(exc).__name__}: {exc}")
+            continue
         rec = cert["recorded"]
         for key, val in red.items():
             if rec.get(key) != val:
@@ -220,8 +250,8 @@ def verify_resource_floor_certs(bundle: dict) -> list:
     match, and any N* that does not actually reach its yield_target (the floor must be a valid
     minimum).  Any tamper — union-bound yield, understated noise, shrunken N*, perturbed model
     constant, dropped 0.5 cap — perturbs a re-derived quantity and is caught here."""
-    errs = []
-    for cert in bundle.get("resource_floor_certs", []):
+    certs, errs = _certificates(bundle, "resource_floor_certs")
+    for cert in certs:
         name = cert.get("name", "?")
         try:
             red = rederive_resource_floor(cert)
@@ -295,12 +325,18 @@ def verify_image_bound_certs(bundle: dict) -> list:
     Containment is EXACT: the scalar re-derivation is bit-identical to the numpy producer (same ops,
     same order, shipped scalar radii), so a faithfully-recorded enclosure re-derives exactly and any
     narrowing (even 1 ULP toward admit) trips ``E_ENCLOSURE_TOO_TIGHT``."""
-    errs = []
-    for cert in bundle.get("image_bound_certs", []):
+    certs, errs = _certificates(bundle, "image_bound_certs")
+    for cert in certs:
         name = cert.get("name", "?")
-        errs += [f"[{name}] {e}" for e in check_kappa_K(
-            float(cert["budget"]), float(cert["safety"]), float(cert["n_photons"]),
-            float(cert["kappa"]), float(cert["K"]))]
+        try:
+            errs += [f"[{name}] {e}" for e in check_kappa_K(
+                float(cert["budget"]), float(cert["safety"]), float(cert["n_photons"]),
+                float(cert["kappa"]), float(cert["K"]))]
+        except (KeyError, TypeError, ValueError, OverflowError) as exc:
+            # Missing or mistyped field: a rejection with a located reason, never
+            # an exception out of the verifier.
+            errs.append(f"[{name}] malformed certificate: {type(exc).__name__}: {exc}")
+            continue
         try:
             re_lo, re_hi = rederive_image_bound(cert)
         except (KeyError, IndexError, ValueError, TypeError, OverflowError) as e:
@@ -343,8 +379,8 @@ def verify_interval_bound_certs(bundle: dict) -> list:
     party can do without trusting anyone, and it is the only part this file
     claims to do.
     """
-    errs = []
-    for cert in bundle.get("interval_bound_certs", []):
+    certs, errs = _certificates(bundle, "interval_bound_certs")
+    for cert in certs:
         name = cert.get("name", "?")
         direction = cert.get("direction")
         if direction not in ("below", "above"):
@@ -387,7 +423,12 @@ def verify_interval_bound_certs(bundle: dict) -> list:
                "n_violating": violating, "n_loci": len(lo),
                "worst_margin": worst}
 
-        rec = cert.get("recorded", {})
+        rec = cert.get("recorded")
+        if not isinstance(rec, dict):
+            errs.append(f"[{name}] recorded must be an object, got "
+                        f"{type(rec).__name__} — a certificate with no recorded "
+                        f"verdict claims nothing")
+            continue
         for key in ("admit", "n_violating", "n_loci"):
             if rec.get(key) != red[key]:
                 errs.append(f"[{name}] recorded {key}={rec.get(key)!r} but "
@@ -410,9 +451,29 @@ def _finite(x) -> bool:
 
 
 def verify_manifest_and_root(bundle_dir: Path, bundle: dict) -> list:
+    """Check every payload file against the manifest, then recompute the root.
+
+    Every field is read defensively. A bundle missing ``seed``, or carrying a
+    manifest that is not a mapping of names to hex digests, is a REJECTION with a
+    reason -- not a KeyError. A checker that raises on hostile input is a denial
+    of service and tells the caller nothing.
+    """
     errs = []
-    manifest = bundle.get("manifest", {})
+    manifest = bundle.get("manifest")
+    if manifest is None:
+        return ["bundle has no manifest, so nothing binds its payload files"]
+    if not isinstance(manifest, dict):
+        return [f"manifest must be an object, got {type(manifest).__name__}"]
+
     for rel, want in sorted(manifest.items()):
+        if not isinstance(rel, str) or not isinstance(want, str):
+            errs.append(f"manifest entry {rel!r} is not a name/digest pair")
+            continue
+        # A manifest entry is a path relative to the bundle. One that climbs out
+        # of it is refused rather than resolved.
+        if rel.startswith("/") or ".." in Path(rel).parts:
+            errs.append(f"manifest entry {rel!r} escapes the bundle directory")
+            continue
         p = bundle_dir / rel
         if not p.is_file():
             errs.append(f"manifest file missing: {rel}")
@@ -420,24 +481,64 @@ def verify_manifest_and_root(bundle_dir: Path, bundle: dict) -> list:
         got = hashlib.sha256(p.read_bytes()).hexdigest()
         if got != want:
             errs.append(f"manifest hash mismatch: {rel}")
-    rows = sorted(manifest.items())
-    master_salt = derive_master_salt(int(bundle["seed"]))
-    salts = derive_tile_salts(master_salt, len(rows))
-    leaves = [leaf_hash(i, salts[i], rel.encode("utf-8") + b"\x00" + bytes.fromhex(h))
-              for i, (rel, h) in enumerate(rows)]
-    if not hmac.compare_digest(merkle_root(leaves).hex(), bundle["merkle_root"]):
+
+    rows = sorted((r, h) for r, h in manifest.items()
+                  if isinstance(r, str) and isinstance(h, str))
+    try:
+        seed = int(bundle["seed"])
+    except (KeyError, TypeError, ValueError):
+        return errs + [f"bundle seed is missing or not an integer: "
+                       f"{bundle.get('seed')!r}"]
+    try:
+        master_salt = derive_master_salt(seed)
+        salts = derive_tile_salts(master_salt, len(rows))
+        leaves = [leaf_hash(i, salts[i], rel.encode("utf-8") + b"\x00" + bytes.fromhex(h))
+                  for i, (rel, h) in enumerate(rows)]
+    except (ValueError, OverflowError) as exc:
+        return errs + [f"manifest digests are not readable hex: {exc}"]
+
+    recorded_root = bundle.get("merkle_root")
+    if not isinstance(recorded_root, str):
+        return errs + [f"merkle_root is missing or not a string: {recorded_root!r}"]
+    if not hmac.compare_digest(merkle_root(leaves).hex(), recorded_root):
         errs.append("merkle root does not recompute")
     return errs
 
 
 def verify_kpis(bundle_dir: Path, bundle: dict) -> list:
+    """Recompute the outputs commitment, and bind the KPIs to the preregistration.
+
+    Defensive throughout, for the reason given on verify_manifest_and_root: a
+    malformed bundle is a verdict, never an exception.
+    """
     errs = []
     kpis = bundle.get("kpis", [])
-    salt = bytes.fromhex(bundle["outputs_salt"])
-    if not hmac.compare_digest(outputs_commitment(salt, kpis).hex(), bundle["outputs_commitment"]):
-        errs.append("outputs commitment does not recompute over the KPI rows")
+    if not isinstance(kpis, list):
+        return [f"kpis must be a list, got {type(kpis).__name__}"]
+
+    salt_hex = bundle.get("outputs_salt")
+    recorded = bundle.get("outputs_commitment")
+    if not isinstance(salt_hex, str) or not isinstance(recorded, str):
+        errs.append("outputs_salt or outputs_commitment is missing or not a string")
+    else:
+        try:
+            salt = bytes.fromhex(salt_hex)
+        except ValueError:
+            errs.append(f"outputs_salt is not hex: {salt_hex!r}")
+        else:
+            try:
+                got = outputs_commitment(salt, kpis).hex()
+            except (TypeError, ValueError) as exc:
+                errs.append(f"KPI rows cannot be committed over: {exc}")
+            else:
+                if not hmac.compare_digest(got, recorded):
+                    errs.append("outputs commitment does not recompute over the KPI rows")
+
     prereg_rel = bundle.get("prereg_file")
     if prereg_rel:
+        if not isinstance(prereg_rel, str) or prereg_rel.startswith("/") \
+                or ".." in Path(prereg_rel).parts:
+            return errs + [f"prereg_file {prereg_rel!r} is not a path inside the bundle"]
         p = bundle_dir / prereg_rel
         if not p.is_file():
             errs.append(f"prereg file missing: {prereg_rel}")
@@ -446,6 +547,9 @@ def verify_kpis(bundle_dir: Path, bundle: dict) -> list:
             if bundle.get("preregistration_sha256") != prereg_sha:
                 errs.append("bundle preregistration_sha256 != hash of shipped prereg file")
             for row in kpis:
+                if not isinstance(row, dict):
+                    errs.append(f"KPI row is not an object (got {type(row).__name__})")
+                    continue
                 if "preregistration_sha256" in row and row["preregistration_sha256"] != prereg_sha:
                     errs.append(f"KPI row {row.get('id','?')} prereg SHA mismatch")
     return errs
@@ -462,8 +566,15 @@ def verify_bundle(bundle_dir, expected_sha256: str = "") -> dict:
     fingerprint = hashlib.sha256(raw).hexdigest()
     if expected_sha256 and not hmac.compare_digest(fingerprint, expected_sha256.lower()):
         errs.append("bundle fingerprint != expected (out-of-band anchor)")
+    def _reject_constant(name):
+        # NaN and Infinity are not JSON, but every parser in wide use accepts
+        # them. The canonical form this format uses forbids them, so a document
+        # containing one cannot be re-serialised -- which used to raise on the
+        # way to the verdict. Refusing at parse time makes it a rejection.
+        raise ValueError(f"{name} is not valid JSON and not permitted here")
+
     try:
-        bundle = json.loads(raw)
+        bundle = json.loads(raw, parse_constant=_reject_constant)
     except ValueError:
         return {"ok": False, "errors": ["bundle.json is not valid JSON"], "fingerprint": fingerprint}
     except RecursionError:

@@ -1,5 +1,9 @@
 # CLI reference
 
+**The command listings below the fold are generated** from the
+parser by `gen_cli_docs.py`; a test fails if they are stale. The prose is
+hand-written.
+
 ```
 lcert-verify [BUNDLE_DIR] [EXPECTED_SHA256] [options]
 ```
@@ -81,6 +85,68 @@ It uses the same exit codes and holds the same line: no anchor means `UNVERIFIED
 exit `4`, not a pass. A check that actually fails is reported as `FAIL` and exit `1`
 whether or not an anchor was given — abstention is for absence of evidence, and a failed
 check is evidence.
+
+## Every flag, generated from the parser
+
+<!-- BEGIN GENERATED CLI -->
+
+## Top level
+
+```
+usage: lcert-verify [-h] [--no-anchor] [--allow-empty] [--json]
+                    [--format {text,json,jsonl,sarif,junit,html}]
+                    [--diff OTHER_BUNDLE] [--diff-anchor DIFF_ANCHOR]
+                    [-o OUTPUT] [--stream] [--scope] [--explain]
+                    [bundle_dir] [expected_sha256]
+
+Re-derive an LCERT-1 certificate's verdict. Abstains rather than asserting
+when a trust anchor is absent.
+
+positional arguments:
+  bundle_dir
+  expected_sha256       bundle fingerprint obtained OUT OF BAND — the trust
+                        anchor
+
+options:
+  -h, --help            show this help message and exit
+  --no-anchor           accept the weaker internal-consistency check on
+                        purpose
+  --allow-empty         permit a bundle that certifies nothing
+  --json                machine-readable output (JSON)
+  --format {text,json,jsonl,sarif,junit,html}
+                        output format. sarif renders in GitHub code scanning;
+                        junit appears in any CI test report; html is a self-
+                        contained page with a per-locus margin chart
+  --diff OTHER_BUNDLE   compare against another bundle: which certificates
+                        changed class and which way the margins moved
+  --diff-anchor DIFF_ANCHOR
+                        trust anchor for the bundle given to --diff
+  -o OUTPUT, --output OUTPUT
+                        write the report to this file instead of stdout
+  --stream              verify one certificate at a time, for bundles too
+                        large to hold in memory. Needs the anchor; gives the
+                        same verdict
+  --scope               print what is and is not checked
+  --explain             show, per locus, which ones prevented admission and by
+                        how much
+
+`lcert-verify serve --help` runs it as an HTTP service instead.
+```
+
+## `lcert-verify serve`
+
+```
+usage: lcert-verify serve [-h] [--host HOST] [--port PORT]
+
+Run the verifier as an HTTP service. Standard library only.
+
+options:
+  -h, --help   show this help message and exit
+  --host HOST  default is loopback; pass 0.0.0.0 to expose deliberately
+  --port PORT
+```
+
+<!-- END GENERATED CLI -->
 
 ## Python API
 

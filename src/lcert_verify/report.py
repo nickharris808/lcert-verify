@@ -117,8 +117,11 @@ def to_junit(res: dict, *, source: str = "bundle.json") -> str:
         "classname": "lcert-verify", "name": f"verify {source}",
     })
     if not ok:
+        # `.get(k, default)` does not help when the key is present and None, and
+        # ElementTree refuses to serialise None. A result with no verdict is
+        # exactly the case that must still render, so coerce.
         f = ET.SubElement(case, "failure", {
-            "type": res.get("verdict", "UNKNOWN"), "message": summary,
+            "type": str(res.get("verdict") or "UNKNOWN"), "message": str(summary),
         })
         f.text = "\n".join(res.get("errors", []) or [summary])
     ET.SubElement(suite, "system-out").text = (

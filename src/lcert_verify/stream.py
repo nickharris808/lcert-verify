@@ -172,11 +172,14 @@ def verify_bundle_streaming(bundle_dir, expected_sha256: str = "", *,
         # uses. Nothing about judging a certificate is reimplemented here.
         errors.extend(_CHECKERS[key]({key: [cert]}))
         counts["certs"] += 1
-        loci = cert.get("loci") or {}
-        for lk in ("ae0", "lo"):
-            if isinstance(loci.get(lk), list):
-                counts["loci"] += len(loci[lk])
-                break
+        # An entry that is not an object is not a certificate. The checker above
+        # reports it; counting must not be what raises on it.
+        loci = cert.get("loci") if isinstance(cert, dict) else None
+        if isinstance(loci, dict):
+            for lk in ("ae0", "lo"):
+                if isinstance(loci.get(lk), list):
+                    counts["loci"] += len(loci[lk])
+                    break
         if progress:
             progress(counts["certs"])
 

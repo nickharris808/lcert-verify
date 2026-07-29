@@ -110,7 +110,14 @@ verifier can be a few hundred lines and still be exact.
 - **[TUTORIAL.md](TUTORIAL.md)** — fifteen minutes, produce → transport → verify → watch a forgery get caught
 - **[CLI.md](CLI.md)** — every flag, verdict and exit code, including SARIF and JUnit output
 - **[TROUBLESHOOTING.md](TROUBLESHOOTING.md)** — the errors you will actually hit, with fixes
-- **[PERFORMANCE.md](PERFORMANCE.md)** — measured throughput (~1.3 µs/locus, linear)
+- **[PERFORMANCE.md](PERFORMANCE.md)** — measured, including the optimisation that was deliberately *not* built and why
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — and the portfolio-wide guide it points to
+
+Portfolio-wide: **[Tutorial](https://github.com/nickharris808/certified-oss/blob/main/TUTORIAL.md)**
+· **[Concepts](https://github.com/nickharris808/certified-oss/blob/main/CONCEPTS.md)**
+· **[FAQ](https://github.com/nickharris808/certified-oss/blob/main/FAQ.md)**
+· **[Architecture](https://github.com/nickharris808/certified-oss/blob/main/ARCHITECTURE.md)**
+· **[API reference](https://nickharris808.github.io/certified-oss/api/)**
 
 
 ## Beyond a pass/fail
@@ -255,9 +262,9 @@ Apache-2.0. Use it, vendor it, ship it in a commercial product. The format sprea
 
 ## The rest of the toolkit
 
-One idea, six pieces: **a recorded verdict is a claim to be checked, never an input to be trusted.**
+**A recorded verdict is a claim to be checked, never an input to be trusted.** Nine repositories are built on it.
 
-The whole story, and the objections answered, live at **[certified-oss](https://github.com/nickharris808/certified-oss)** — start there if this is the first of the six you have opened.
+The whole story, and the objections answered, live at **[certified-oss](https://github.com/nickharris808/certified-oss)** — start there if this is the first one you have opened.
 
 | | |
 |---|---|
