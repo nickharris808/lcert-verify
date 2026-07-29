@@ -4,7 +4,7 @@
 ![license](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![python](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)
 ![dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
-![tests](https://img.shields.io/badge/tests-26%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-409%20passing-brightgreen)
 
 **Check a manufacturing certificate without trusting whoever produced it — or installing anything.**
 
@@ -104,7 +104,6 @@ Those operations are correctly rounded by the standard, and CPython floats *are*
 a pure-Python re-derivation is bit-identical to the producer's — on any platform. That is why this
 verifier can be a few hundred lines and still be exact.
 
-
 ## Documentation
 
 - **[TUTORIAL.md](TUTORIAL.md)** — fifteen minutes, produce → transport → verify → watch a forgery get caught
@@ -118,7 +117,6 @@ Portfolio-wide: **[Tutorial](https://github.com/nickharris808/certified-oss/blob
 · **[FAQ](https://github.com/nickharris808/certified-oss/blob/main/FAQ.md)**
 · **[Architecture](https://github.com/nickharris808/certified-oss/blob/main/ARCHITECTURE.md)**
 · **[API reference](https://nickharris808.github.io/certified-oss/api/)**
-
 
 ## Beyond a pass/fail
 
@@ -161,7 +159,6 @@ a locus exactly on the threshold and one a single ULP inside it.
 
 To produce bundles ergonomically — preregistration, evidence files, self-verification on write —
 see **[lcert-build](https://github.com/nickharris808/lcert-build)**.
-
 
 ## Run it as a service
 
@@ -283,3 +280,12 @@ The whole story, and the objections answered, live at **[certified-oss](https://
 Everything here **checks**. None of it **produces** a certificate that is physically meaningful —
 that needs sound enclosures over real process models, which is a separate commercial product. If
 you need certificates rather than a way to check them, that is the conversation to have.
+
+## Licence, citation, contributing
+
+Apache-2.0 — see [LICENSE](LICENSE). If you use this, please cite it:
+[CITATION.cff](CITATION.cff).
+
+The most valuable contribution is **a forgery this project fails to catch** —
+see [CONTRIBUTING.md](CONTRIBUTING.md) and the
+[portfolio-wide guide](https://github.com/nickharris808/certified-oss/blob/main/CONTRIBUTING.md).
