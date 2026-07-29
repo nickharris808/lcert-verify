@@ -141,11 +141,13 @@ def test_malformed_documents_are_rejected_by_both_paths(tmp_path, raw):
     assert b["verdict"] in ("REFUTED", "VACUOUS"), b["verdict"]
 
 
-def test_a_hostile_document_does_not_hang_or_explode(tmp_path):
-    """Deep nesting must be refused, not recursed into."""
-    (tmp_path / "bundle.json").write_bytes(b'{"a": ' + b"[" * 5000 + b"]" * 5000 + b"}")
+@pytest.mark.parametrize("depth", [5_000, 50_000, 200_000])
+def test_a_hostile_document_does_not_hang_or_explode(tmp_path, depth):
+    """Deep nesting must produce a verdict, whatever depth the parser gives up at."""
+    (tmp_path / "bundle.json").write_bytes(b'{"a": ' + b"[" * depth + b"]" * depth + b"}")
     r = verify_bundle_streaming(tmp_path, fingerprint(tmp_path / "bundle.json"))
     assert r["ok"] is False
+    assert r["errors"]
 
 
 # ---------------------------------------------------------------- the walker

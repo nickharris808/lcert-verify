@@ -307,24 +307,46 @@ def test_helpers_accept_a_parsed_bundle_not_a_path(tmp_path):
 
 
 def test_a_deeply_nested_bundle_is_rejected_not_crashed(tmp_path):
-    """A hostile document must be a verdict, never an exception.
+    """A hostile document must produce a verdict, never an exception.
 
-    This shipped broken: `json.loads` raises `RecursionError` on deep nesting,
-    which is not a `ValueError`, so it escaped the parse guard and took the
-    process down. A checker that crashes on hostile input is a denial of service
-    and tells the caller nothing.
+    The depth at which the parser gives up is an implementation detail that moved
+    between CPython versions, so this asserts the property rather than the
+    message: whatever the document, a verdict comes back and nothing escapes.
     """
-    (tmp_path / "bundle.json").write_bytes(b'{"a": ' + b"[" * 5000 + b"]" * 5000 + b"}")
-    res = L.verify_bundle(tmp_path, "ab" * 32)
-    assert res["verdict"] == "REFUTED"
-    assert any("too deeply" in e for e in res["errors"])
+    for depth in (5_000, 50_000, 200_000):
+        (tmp_path / "bundle.json").write_bytes(
+            b'{"a": ' + b"[" * depth + b"]" * depth + b"}")
+        res = L.verify_bundle(tmp_path, "ab" * 32)     # must not raise
+        assert res["verdict"] == "REFUTED", depth
+        assert res["errors"], depth
+
+
+def test_a_recursion_error_during_parse_is_a_verdict_not_a_crash(tmp_path, monkeypatch):
+    """The fixed code path, exercised directly on every Python version.
+
+    This shipped broken: `json.loads` raises `RecursionError` on a deeply nested
+    document, which is not a `ValueError`, so it escaped the parse guard and took
+    the process down. A checker that crashes on hostile input is a denial of
+    service and tells the caller nothing.
+    """
+    from lcert_verify import _verifier as V
+
+    (tmp_path / "bundle.json").write_bytes(b'{"format": "x"}')
+
+    def boom(*a, **kw):
+        raise RecursionError("maximum recursion depth exceeded")
+
+    monkeypatch.setattr(V.json, "loads", boom)
+    res = V.verify_bundle(tmp_path, "ab" * 32)         # must not raise
+    assert res["ok"] is False
+    assert any("too deeply" in e for e in res["errors"]), res["errors"]
 
 
 def test_the_standalone_file_rejects_deep_nesting_too(tmp_path):
     import subprocess
     import sys
     from pathlib import Path
-    (tmp_path / "bundle.json").write_bytes(b'{"a": ' + b"[" * 5000 + b"]" * 5000 + b"}")
+    (tmp_path / "bundle.json").write_bytes(b'{"a": ' + b"[" * 50_000 + b"]" * 50_000 + b"}")
     standalone = Path(L.__file__).parent / "_verifier.py"
     out = subprocess.run([sys.executable, "-I", "-S", str(standalone), str(tmp_path),
                           "ab" * 32], capture_output=True, text=True)
