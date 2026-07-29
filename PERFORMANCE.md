@@ -170,14 +170,20 @@ and the cost is interpreter startup — **92 ms per case**, 3.3 s for the corpus
 for a thousand-case atlas. That is exactly the workload `cert-atlas score` and the submission path
 run, so it is the number that matters.
 
-Subprocesses release the GIL while they wait, so a thread pool helps. Measured on 14 cores:
+Subprocesses release the GIL while they wait, so a thread pool helps. How much depends on how
+contended the machine is, and that turned out to matter more than expected — so both measurements
+are here rather than the flattering one.
 
-| `--jobs` | Time | Speedup |
+| `--jobs` | Idle machine | Loaded machine (load avg ≈ 5) |
 |---|---|---|
-| 1 | 3260 ms | 1.00× |
-| 4 | 805 ms | 4.05× |
-| 8 | 519 ms | 6.29× |
-| 16 | 484 ms | **6.73×** |
+| 1 | 3260 ms — 1.00× | 2944 ms — 1.00× |
+| 4 | 805 ms — 4.05× | 833 ms — 3.53× |
+| 8 | 519 ms — 6.29× | 739 ms — 3.98× |
+| 16 | 484 ms — **6.73×** | 743 ms — **3.96×** |
+
+**Expect about 4×, not 6.7×.** The 6.73× figure was real and is reproducible on an otherwise idle
+14-core machine; on the same machine under ordinary load it is 3.7–4.1×, and that is the number a
+reader is more likely to see. Returns flatten past `--jobs 8` in both cases.
 
 Results are assembled in index order regardless of scheduling, so the score, the row order and the
 missed list are identical at any `--jobs`. A test asserts that, and another asserts that a hostile
