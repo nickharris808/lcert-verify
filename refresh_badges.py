@@ -32,21 +32,27 @@ def shield(label: str, message: str, colour: str) -> str:
 
 
 def count_tests(pkg: Path) -> int:
-    """Passing tests, by running the suite. Not by reading a number."""
-    # -p no:regtest: that plugin prints its own report after the summary line,
-    # which makes the count harder to find and is not what is being measured.
-    # No -q here: several packages already set it in addopts, and -qq suppresses
-    # the summary line this function exists to read.
-    r = subprocess.run([sys.executable, "-m", "pytest", "tests",
+    """Tests COLLECTED, by asking pytest. Not by reading a number.
+
+    Collected rather than passed, deliberately. Some tests skip when an optional
+    tool is absent — `cadical` is not on the CI runners — so a passed count is a
+    property of the machine, not of the suite, and a badge asserting one would be
+    stale on any environment that differs from where it was generated. Collection
+    is the same everywhere.
+
+    Whether they pass is what the CI badge beside it says.
+    """
+    # No -q: several packages set it in addopts, and -qq replaces the summary
+    # line this function reads with a per-file listing.
+    r = subprocess.run([sys.executable, "-m", "pytest", "tests", "--collect-only",
                         "-p", "no:cacheprovider", "-p", "no:regtest"],
                        cwd=pkg, capture_output=True, text=True)
-    m = re.findall(r"(\d+) passed", r.stdout + r.stderr)
+    m = re.findall(r"(\d+) tests? collected", r.stdout + r.stderr)
     if not m:
         raise RuntimeError(f"could not count tests in {pkg.name}:\n"
                            f"{(r.stdout + r.stderr)[-400:]}")
     if r.returncode != 0:
-        raise RuntimeError(f"{pkg.name}: the suite is not green; refusing to "
-                           f"write a badge over a failing run")
+        raise RuntimeError(f"{pkg.name}: collection failed; refusing to write a badge")
     return int(m[-1])
 
 
@@ -91,7 +97,7 @@ def badges_for(name: str, pkg: Path) -> dict:
         return {"license": ("Apache-2.0", "blue"),
                 "repositories": ("9", "blue"),
                 "docs": ("live", "brightgreen")}
-    out["tests"] = (f"{count_tests(pkg)} passing", "brightgreen")
+    out["tests"] = (f"{count_tests(pkg)} tests", "blue")
     if name == "cert-atlas":
         n, inv = atlas_shape(pkg)
         out["atlas"] = (f"{n} cases / {inv} forgeries", "blue")

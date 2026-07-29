@@ -4,7 +4,7 @@
 ![license](https://img.shields.io/badge/license-Apache--2.0-blue)
 ![python](https://img.shields.io/badge/python-3.9%20%7C%203.10%20%7C%203.11%20%7C%203.12%20%7C%203.13-blue)
 ![dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
-![tests](https://img.shields.io/badge/tests-409%20passing-brightgreen)
+![tests](https://img.shields.io/badge/tests-412%20tests-blue)
 
 **Check a manufacturing certificate without trusting whoever produced it — or installing anything.**
 
